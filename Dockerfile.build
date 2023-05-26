@@ -1,0 +1,11 @@
+FROM registry.fedoraproject.org/fedora:38
+
+RUN dnf install -y rust cargo nasm
+
+ADD ./ /berserker/
+
+WORKDIR /berserker/
+
+RUN cargo build -r
+
+RUN nasm -f elf64 -o stub.o stub.asm && ld -o stub stub.o

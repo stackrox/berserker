@@ -1,0 +1,18 @@
+restart_interval = 10
+workload = "processes"
+
+# endpoints workload
+endpoints_distribution = "zipf"
+
+# endpoints zipf parameters
+n_ports = 200
+zipf_exponent = 1.4
+
+# endppoints uniform parameters
+uniform_upper = 100
+uniform_lower = 1
+
+# processes workload
+arrival_rate = 10.0
+departure_rate = 200.0
+random_process = true
