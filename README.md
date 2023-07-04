@@ -19,6 +19,12 @@ workloads:
   modelled by Zipf \[3\] or uniform distributions (to cover extreme cases, when
   one process has significantly more endpoints than others).
 
+* Syscall based workload to evaluate certain type of edge cases. For now only
+  one syscall, `getpid` is included, to verify an overhead where normally
+  Collector doesn't stay in the way, but could be with the vanilla Falco.
+  Similarly to the process based workload, syscalls are also modelled by a
+  Poisson process.
+
 Every workload is executed via set of worker processes, that are distributed
 among available system CPU cores.
 

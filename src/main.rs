@@ -12,6 +12,7 @@ use nix::sys::wait::waitpid;
 use nix::unistd::Pid;
 use config::Config;
 use std::collections::HashMap;
+use syscalls::{Sysno, syscall};
 
 use rand::prelude::*;
 use rand::{distributions::Alphanumeric, Rng};
@@ -29,6 +30,7 @@ enum Distribution {
 enum Workload {
     Endpoints,
     Processes,
+    Syscalls,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -134,12 +136,44 @@ fn listen_payload(config: WorkerConfig) -> std::io::Result<()> {
     Ok(())
 }
 
+fn do_syscall(config: WorkerConfig) -> std::io::Result<()> {
+    match unsafe { syscall!(Sysno::getpid) } {
+        Ok(_) => {
+            Ok(())
+        }
+        Err(err) => {
+            warn!("Syscall failed: {}", err);
+            Ok(())
+        }
+    }
+}
+
+fn syscalls_payload(config: WorkerConfig) -> std::io::Result<()> {
+    info!("Process {} from {}: {}-{}",
+             config.process, config.cpu.id, config.lower, config.upper);
+
+    loop {
+        thread::spawn(move || {
+            do_syscall(config)
+        });
+
+        let interval: f64 = thread_rng().sample(Exp::new(config.workload.arrival_rate).unwrap());
+        info!("{}-{}: Interval {}, rounded {}",
+              config.cpu.id, config.process,
+              interval, (interval * 1000.0).round() as u64);
+        thread::sleep(time::Duration::from_millis((interval * 1000.0).round() as u64));
+        info!("{}-{}: Continue", config.cpu.id, config.process);
+    }
+}
+
 fn main() {
     // Retrieve the IDs of all active CPU cores.
     let core_ids = core_affinity::get_core_ids().unwrap();
     let settings = Config::builder()
         // Add in `./Settings.toml`
-        .add_source(config::File::with_name("/etc/berserker/workload.toml"))
+        .add_source(config::File::with_name("/etc/berserker/workload.toml")
+                    .required(false))
+        .add_source(config::File::with_name("workload.toml").required(false))
         // Add in settings from the environment (with a prefix of APP)
         // Eg.. `WORKLOAD_DEBUG=1 ./target/app` would set the `debug` key
         .add_source(config::Environment::with_prefix("WORKLOAD"))
@@ -156,6 +190,7 @@ fn main() {
     let workload = match settings["workload"].as_str() {
         "endpoints" => Workload::Endpoints,
         "processes" => Workload::Processes,
+        "syscalls" => Workload::Syscalls,
         _           => Workload::Endpoints,
     };
 
@@ -213,6 +248,7 @@ fn main() {
                         let _res = match config.workload {
                             Workload::Endpoints => listen_payload(worker_config),
                             Workload::Processes => process_payload(worker_config),
+                            Workload::Syscalls => syscalls_payload(worker_config),
                         };
                     }
                 }
