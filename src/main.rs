@@ -2,23 +2,23 @@
 extern crate log;
 extern crate core_affinity;
 
-use fork::{fork, Fork};
-use std::{thread, time};
+use std::collections::HashMap;
+use std::net::TcpListener;
 use std::process::Command;
-use std::net::{TcpListener};
+use std::{thread, time};
+
+use config::Config;
 use core_affinity::CoreId;
+use fork::{fork, Fork};
 use itertools::iproduct;
 use nix::sys::wait::waitpid;
 use nix::unistd::Pid;
-use config::Config;
-use std::collections::HashMap;
-use syscalls::{Sysno, syscall};
-
 use rand::prelude::*;
 use rand::{distributions::Alphanumeric, Rng};
-use rand_distr::Zipf;
-use rand_distr::Uniform;
 use rand_distr::Exp;
+use rand_distr::Uniform;
+use rand_distr::Zipf;
+use syscalls::{syscall, Sysno};
 
 #[derive(Debug, Copy, Clone)]
 enum Distribution {
@@ -78,56 +78,66 @@ fn spawn_process(config: WorkerConfig, lifetime: u64) -> std::io::Result<()> {
         Ok(())
     } else {
         match fork() {
-           Ok(Fork::Parent(child)) => {
-               info!("Parent: child {}", child);
-               waitpid(Pid::from_raw(child), None);
-               Ok(())
-           },
-           Ok(Fork::Child) => {
-               info!("{}-{}: Child start, {}", config.cpu.id, config.process, lifetime);
-               thread::sleep(time::Duration::from_millis(lifetime));
-               info!("{}-{}: Child stop", config.cpu.id, config.process);
-               Ok(())
-           },
-           Err(_) => {
-               warn!("Failed");
-               Ok(())
-          },
+            Ok(Fork::Parent(child)) => {
+                info!("Parent: child {}", child);
+                waitpid(Pid::from_raw(child), None);
+                Ok(())
+            }
+            Ok(Fork::Child) => {
+                info!(
+                    "{}-{}: Child start, {}",
+                    config.cpu.id, config.process, lifetime
+                );
+                thread::sleep(time::Duration::from_millis(lifetime));
+                info!("{}-{}: Child stop", config.cpu.id, config.process);
+                Ok(())
+            }
+            Err(_) => {
+                warn!("Failed");
+                Ok(())
+            }
         }
     }
 }
 
 // Spawn processes with a specified rate
 fn process_payload(config: WorkerConfig) -> std::io::Result<()> {
-    info!("Process {} from {}: {}-{}",
-             config.process, config.cpu.id, config.lower, config.upper);
+    info!(
+        "Process {} from {}: {}-{}",
+        config.process, config.cpu.id, config.lower, config.upper
+    );
 
     loop {
         let lifetime: f64 = thread_rng().sample(Exp::new(config.workload.departure_rate).unwrap());
 
-        thread::spawn(move || {
-            spawn_process(config, (lifetime * 1000.0).round() as u64)
-        });
+        thread::spawn(move || spawn_process(config, (lifetime * 1000.0).round() as u64));
 
         let interval: f64 = thread_rng().sample(Exp::new(config.workload.arrival_rate).unwrap());
-        info!("{}-{}: Interval {}, rounded {}, lifetime {}, rounded {}",
-              config.cpu.id, config.process,
-              interval, (interval * 1000.0).round() as u64,
-              lifetime, (lifetime * 1000.0).round() as u64);
-        thread::sleep(time::Duration::from_millis((interval * 1000.0).round() as u64));
+        info!(
+            "{}-{}: Interval {}, rounded {}, lifetime {}, rounded {}",
+            config.cpu.id,
+            config.process,
+            interval,
+            (interval * 1000.0).round() as u64,
+            lifetime,
+            (lifetime * 1000.0).round() as u64
+        );
+        thread::sleep(time::Duration::from_millis(
+            (interval * 1000.0).round() as u64
+        ));
         info!("{}-{}: Continue", config.cpu.id, config.process);
     }
 }
 
 fn listen_payload(config: WorkerConfig) -> std::io::Result<()> {
-    info!("Process {} from {}: {}-{}",
-             config.process, config.cpu.id, config.lower, config.upper);
+    info!(
+        "Process {} from {}: {}-{}",
+        config.process, config.cpu.id, config.lower, config.upper
+    );
 
-    let listeners: Vec<_> = (config.lower..config.upper).map(|port| {
-        thread::spawn(move || {
-            listen(port, config.workload.restart_interval)
-        })
-    }).collect();
+    let listeners: Vec<_> = (config.lower..config.upper)
+        .map(|port| thread::spawn(move || listen(port, config.workload.restart_interval)))
+        .collect();
 
     for listener in listeners {
         let _res = listener.join().unwrap();
@@ -138,9 +148,7 @@ fn listen_payload(config: WorkerConfig) -> std::io::Result<()> {
 
 fn do_syscall(config: WorkerConfig) -> std::io::Result<()> {
     match unsafe { syscall!(Sysno::getpid) } {
-        Ok(_) => {
-            Ok(())
-        }
+        Ok(_) => Ok(()),
         Err(err) => {
             warn!("Syscall failed: {}", err);
             Ok(())
@@ -149,19 +157,25 @@ fn do_syscall(config: WorkerConfig) -> std::io::Result<()> {
 }
 
 fn syscalls_payload(config: WorkerConfig) -> std::io::Result<()> {
-    info!("Process {} from {}: {}-{}",
-             config.process, config.cpu.id, config.lower, config.upper);
+    info!(
+        "Process {} from {}: {}-{}",
+        config.process, config.cpu.id, config.lower, config.upper
+    );
 
     loop {
-        thread::spawn(move || {
-            do_syscall(config)
-        });
+        thread::spawn(move || do_syscall(config));
 
         let interval: f64 = thread_rng().sample(Exp::new(config.workload.arrival_rate).unwrap());
-        info!("{}-{}: Interval {}, rounded {}",
-              config.cpu.id, config.process,
-              interval, (interval * 1000.0).round() as u64);
-        thread::sleep(time::Duration::from_millis((interval * 1000.0).round() as u64));
+        info!(
+            "{}-{}: Interval {}, rounded {}",
+            config.cpu.id,
+            config.process,
+            interval,
+            (interval * 1000.0).round() as u64
+        );
+        thread::sleep(time::Duration::from_millis(
+            (interval * 1000.0).round() as u64
+        ));
         info!("{}-{}: Continue", config.cpu.id, config.process);
     }
 }
@@ -171,8 +185,7 @@ fn main() {
     let core_ids = core_affinity::get_core_ids().unwrap();
     let settings = Config::builder()
         // Add in `./Settings.toml`
-        .add_source(config::File::with_name("/etc/berserker/workload.toml")
-                    .required(false))
+        .add_source(config::File::with_name("/etc/berserker/workload.toml").required(false))
         .add_source(config::File::with_name("workload.toml").required(false))
         // Add in settings from the environment (with a prefix of APP)
         // Eg.. `WORKLOAD_DEBUG=1 ./target/app` would set the `debug` key
@@ -191,16 +204,16 @@ fn main() {
         "endpoints" => Workload::Endpoints,
         "processes" => Workload::Processes,
         "syscalls" => Workload::Syscalls,
-        _           => Workload::Endpoints,
+        _ => Workload::Endpoints,
     };
 
     let endpoints_dist = match settings["endpoints_distribution"].as_str() {
-        "zipf"      => Distribution::Zipfian,
-        "uniform"   => Distribution::Uniform,
-        _           => Distribution::Zipfian,
+        "zipf" => Distribution::Zipfian,
+        "uniform" => Distribution::Uniform,
+        _ => Distribution::Zipfian,
     };
 
-    let config: WorkloadConfig = WorkloadConfig{
+    let config: WorkloadConfig = WorkloadConfig {
         restart_interval: settings["restart_interval"].parse::<u64>().unwrap(),
         endpoints_dist: endpoints_dist,
         workload: workload,
@@ -216,48 +229,56 @@ fn main() {
     // Create processes for each active CPU core.
     let handles: Vec<_> = iproduct!(core_ids.into_iter(), 0..9)
         .map(|(cpu, process)| {
+            match config.endpoints_dist {
+                Distribution::Zipfian => {
+                    let n_ports: f64 = thread_rng()
+                        .sample(Zipf::new(config.n_ports, config.zipf_exponent).unwrap());
 
-        match config.endpoints_dist {
-            Distribution::Zipfian => {
-                let n_ports: f64 = thread_rng().sample(Zipf::new(config.n_ports, config.zipf_exponent).unwrap());
-
-                lower = upper;
-                upper += n_ports as usize;
-            },
-            Distribution::Uniform => {
-                let n_ports = thread_rng().sample(Uniform::new(config.uniform_lower, config.uniform_upper));
-
-                lower = upper;
-                upper += n_ports as usize;
-            }
-        }
-
-        match fork() {
-           Ok(Fork::Parent(child)) => {info!("Child {}", child); Some(child)},
-           Ok(Fork::Child) => {
-                if core_affinity::set_for_current(cpu) {
-                    let worker_config: WorkerConfig = WorkerConfig{
-                        workload: config,
-                        cpu: cpu,
-                        process: process,
-                        lower: lower,
-                        upper: upper,
-                    };
-
-                    loop {
-                        let _res = match config.workload {
-                            Workload::Endpoints => listen_payload(worker_config),
-                            Workload::Processes => process_payload(worker_config),
-                            Workload::Syscalls => syscalls_payload(worker_config),
-                        };
-                    }
+                    lower = upper;
+                    upper += n_ports as usize;
                 }
+                Distribution::Uniform => {
+                    let n_ports = thread_rng()
+                        .sample(Uniform::new(config.uniform_lower, config.uniform_upper));
 
-                None
-           },
-           Err(_) => {warn!("Failed"); None},
-        }
-    }).collect();
+                    lower = upper;
+                    upper += n_ports as usize;
+                }
+            }
+
+            match fork() {
+                Ok(Fork::Parent(child)) => {
+                    info!("Child {}", child);
+                    Some(child)
+                }
+                Ok(Fork::Child) => {
+                    if core_affinity::set_for_current(cpu) {
+                        let worker_config: WorkerConfig = WorkerConfig {
+                            workload: config,
+                            cpu: cpu,
+                            process: process,
+                            lower: lower,
+                            upper: upper,
+                        };
+
+                        loop {
+                            let _res = match config.workload {
+                                Workload::Endpoints => listen_payload(worker_config),
+                                Workload::Processes => process_payload(worker_config),
+                                Workload::Syscalls => syscalls_payload(worker_config),
+                            };
+                        }
+                    }
+
+                    None
+                }
+                Err(_) => {
+                    warn!("Failed");
+                    None
+                }
+            }
+        })
+        .collect();
 
     info!("In total: {}", upper);
 
