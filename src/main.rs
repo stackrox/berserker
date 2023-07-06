@@ -57,7 +57,7 @@ struct WorkerConfig {
 }
 
 fn listen(port: usize, sleep: u64) -> std::io::Result<()> {
-    let addr = format!("127.0.0.1:{}", port);
+    let addr = format!("127.0.0.1:{port}");
     let listener = TcpListener::bind(addr)?;
 
     let _res = listener.incoming();
@@ -80,7 +80,7 @@ fn spawn_process(config: WorkerConfig, lifetime: u64) -> std::io::Result<()> {
         match fork() {
             Ok(Fork::Parent(child)) => {
                 info!("Parent: child {}", child);
-                waitpid(Pid::from_raw(child), None);
+                waitpid(Pid::from_raw(child), None).unwrap();
                 Ok(())
             }
             Ok(Fork::Child) => {
@@ -146,7 +146,7 @@ fn listen_payload(config: WorkerConfig) -> std::io::Result<()> {
     Ok(())
 }
 
-fn do_syscall(config: WorkerConfig) -> std::io::Result<()> {
+fn do_syscall(_config: WorkerConfig) -> std::io::Result<()> {
     match unsafe { syscall!(Sysno::getpid) } {
         Ok(_) => Ok(()),
         Err(err) => {
@@ -215,8 +215,8 @@ fn main() {
 
     let config: WorkloadConfig = WorkloadConfig {
         restart_interval: settings["restart_interval"].parse::<u64>().unwrap(),
-        endpoints_dist: endpoints_dist,
-        workload: workload,
+        endpoints_dist,
+        workload,
         zipf_exponent: settings["zipf_exponent"].parse::<f64>().unwrap(),
         n_ports: settings["n_ports"].parse::<u64>().unwrap(),
         arrival_rate: settings["arrival_rate"].parse::<f64>().unwrap(),
@@ -255,10 +255,10 @@ fn main() {
                     if core_affinity::set_for_current(cpu) {
                         let worker_config: WorkerConfig = WorkerConfig {
                             workload: config,
-                            cpu: cpu,
-                            process: process,
-                            lower: lower,
-                            upper: upper,
+                            cpu,
+                            process,
+                            lower,
+                            upper,
                         };
 
                         loop {
@@ -282,8 +282,8 @@ fn main() {
 
     info!("In total: {}", upper);
 
-    for handle in handles.into_iter().filter_map(|pid| pid) {
+    for handle in handles.into_iter().flatten() {
         info!("waitpid: {}", handle);
-        waitpid(Pid::from_raw(handle), None);
+        waitpid(Pid::from_raw(handle), None).unwrap();
     }
 }
