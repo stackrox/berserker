@@ -3,182 +3,18 @@ extern crate log;
 extern crate core_affinity;
 
 use std::collections::HashMap;
-use std::net::TcpListener;
-use std::process::Command;
-use std::{thread, time};
 
+use berserker::WorkloadConfig;
 use config::Config;
-use core_affinity::CoreId;
 use fork::{fork, Fork};
 use itertools::iproduct;
 use nix::sys::wait::waitpid;
 use nix::unistd::Pid;
 use rand::prelude::*;
-use rand::{distributions::Alphanumeric, Rng};
-use rand_distr::Exp;
 use rand_distr::Uniform;
 use rand_distr::Zipf;
-use syscalls::{syscall, Sysno};
 
-#[derive(Debug, Copy, Clone)]
-enum Distribution {
-    Zipfian,
-    Uniform,
-}
-
-#[derive(Debug, Copy, Clone)]
-enum Workload {
-    Endpoints,
-    Processes,
-    Syscalls,
-}
-
-#[derive(Debug, Copy, Clone)]
-struct WorkloadConfig {
-    restart_interval: u64,
-    endpoints_dist: Distribution,
-    workload: Workload,
-    zipf_exponent: f64,
-    n_ports: u64,
-    uniform_lower: u64,
-    uniform_upper: u64,
-    arrival_rate: f64,
-    departure_rate: f64,
-    random_process: bool,
-}
-
-#[derive(Debug, Copy, Clone)]
-struct WorkerConfig {
-    workload: WorkloadConfig,
-    cpu: CoreId,
-    process: usize,
-    lower: usize,
-    upper: usize,
-}
-
-fn listen(port: usize, sleep: u64) -> std::io::Result<()> {
-    let addr = format!("127.0.0.1:{port}");
-    let listener = TcpListener::bind(addr)?;
-
-    let _res = listener.incoming();
-
-    thread::sleep(time::Duration::from_secs(sleep));
-    Ok(())
-}
-
-fn spawn_process(config: WorkerConfig, lifetime: u64) -> std::io::Result<()> {
-    if config.workload.random_process {
-        let uniq_arg: String = rand::thread_rng()
-            .sample_iter(&Alphanumeric)
-            .take(7)
-            .map(char::from)
-            .collect();
-        let _res = Command::new("stub").arg(uniq_arg).output().unwrap();
-        //info!("Command output: {}",  String::from_utf8(res.stdout).unwrap());
-        Ok(())
-    } else {
-        match fork() {
-            Ok(Fork::Parent(child)) => {
-                info!("Parent: child {}", child);
-                waitpid(Pid::from_raw(child), None).unwrap();
-                Ok(())
-            }
-            Ok(Fork::Child) => {
-                info!(
-                    "{}-{}: Child start, {}",
-                    config.cpu.id, config.process, lifetime
-                );
-                thread::sleep(time::Duration::from_millis(lifetime));
-                info!("{}-{}: Child stop", config.cpu.id, config.process);
-                Ok(())
-            }
-            Err(_) => {
-                warn!("Failed");
-                Ok(())
-            }
-        }
-    }
-}
-
-// Spawn processes with a specified rate
-fn process_payload(config: WorkerConfig) -> std::io::Result<()> {
-    info!(
-        "Process {} from {}: {}-{}",
-        config.process, config.cpu.id, config.lower, config.upper
-    );
-
-    loop {
-        let lifetime: f64 = thread_rng().sample(Exp::new(config.workload.departure_rate).unwrap());
-
-        thread::spawn(move || spawn_process(config, (lifetime * 1000.0).round() as u64));
-
-        let interval: f64 = thread_rng().sample(Exp::new(config.workload.arrival_rate).unwrap());
-        info!(
-            "{}-{}: Interval {}, rounded {}, lifetime {}, rounded {}",
-            config.cpu.id,
-            config.process,
-            interval,
-            (interval * 1000.0).round() as u64,
-            lifetime,
-            (lifetime * 1000.0).round() as u64
-        );
-        thread::sleep(time::Duration::from_millis(
-            (interval * 1000.0).round() as u64
-        ));
-        info!("{}-{}: Continue", config.cpu.id, config.process);
-    }
-}
-
-fn listen_payload(config: WorkerConfig) -> std::io::Result<()> {
-    info!(
-        "Process {} from {}: {}-{}",
-        config.process, config.cpu.id, config.lower, config.upper
-    );
-
-    let listeners: Vec<_> = (config.lower..config.upper)
-        .map(|port| thread::spawn(move || listen(port, config.workload.restart_interval)))
-        .collect();
-
-    for listener in listeners {
-        let _res = listener.join().unwrap();
-    }
-
-    Ok(())
-}
-
-fn do_syscall(_config: WorkerConfig) -> std::io::Result<()> {
-    match unsafe { syscall!(Sysno::getpid) } {
-        Ok(_) => Ok(()),
-        Err(err) => {
-            warn!("Syscall failed: {}", err);
-            Ok(())
-        }
-    }
-}
-
-fn syscalls_payload(config: WorkerConfig) -> std::io::Result<()> {
-    info!(
-        "Process {} from {}: {}-{}",
-        config.process, config.cpu.id, config.lower, config.upper
-    );
-
-    loop {
-        thread::spawn(move || do_syscall(config));
-
-        let interval: f64 = thread_rng().sample(Exp::new(config.workload.arrival_rate).unwrap());
-        info!(
-            "{}-{}: Interval {}, rounded {}",
-            config.cpu.id,
-            config.process,
-            interval,
-            (interval * 1000.0).round() as u64
-        );
-        thread::sleep(time::Duration::from_millis(
-            (interval * 1000.0).round() as u64
-        ));
-        info!("{}-{}: Continue", config.cpu.id, config.process);
-    }
-}
+use berserker::{worker::WorkerConfig, Distribution, Workload};
 
 fn main() {
     // Retrieve the IDs of all active CPU cores.
@@ -213,7 +49,7 @@ fn main() {
         _ => Distribution::Zipfian,
     };
 
-    let config: WorkloadConfig = WorkloadConfig {
+    let config = WorkloadConfig {
         restart_interval: settings["restart_interval"].parse::<u64>().unwrap(),
         endpoints_dist,
         workload,
@@ -253,19 +89,13 @@ fn main() {
                 }
                 Ok(Fork::Child) => {
                     if core_affinity::set_for_current(cpu) {
-                        let worker_config: WorkerConfig = WorkerConfig {
-                            workload: config,
-                            cpu,
-                            process,
-                            lower,
-                            upper,
-                        };
+                        let worker_config = WorkerConfig::new(config, cpu, process, lower, upper);
 
                         loop {
                             let _res = match config.workload {
-                                Workload::Endpoints => listen_payload(worker_config),
-                                Workload::Processes => process_payload(worker_config),
-                                Workload::Syscalls => syscalls_payload(worker_config),
+                                Workload::Endpoints => worker_config.listen_payload(),
+                                Workload::Processes => worker_config.process_payload(),
+                                Workload::Syscalls => worker_config.syscalls_payload(),
                             };
                         }
                     }
