@@ -36,7 +36,7 @@ impl WorkerConfig {
         }
     }
 
-    pub fn spawn_process(self, lifetime: u64) -> Result<()> {
+    fn spawn_process(&self, lifetime: u64) -> Result<()> {
         if self.workload.random_process {
             let uniq_arg: String = rand::thread_rng()
                 .sample_iter(&Alphanumeric)
@@ -70,7 +70,7 @@ impl WorkerConfig {
     }
 
     // Spawn processes with a specified rate
-    pub fn process_payload(self) -> std::io::Result<()> {
+    pub fn process_payload(&self) -> std::io::Result<()> {
         info!(
             "Process {} from {}: {}-{}",
             self.process, self.cpu.id, self.lower, self.upper
@@ -80,7 +80,8 @@ impl WorkerConfig {
             let lifetime: f64 =
                 thread_rng().sample(Exp::new(self.workload.departure_rate).unwrap());
 
-            thread::spawn(move || self.spawn_process((lifetime * 1000.0).round() as u64));
+            let worker = *self;
+            thread::spawn(move || worker.spawn_process((lifetime * 1000.0).round() as u64));
 
             let interval: f64 = thread_rng().sample(Exp::new(self.workload.arrival_rate).unwrap());
             info!(
@@ -99,14 +100,16 @@ impl WorkerConfig {
         }
     }
 
-    pub fn listen_payload(self) -> std::io::Result<()> {
+    pub fn listen_payload(&self) -> std::io::Result<()> {
         info!(
             "Process {} from {}: {}-{}",
             self.process, self.cpu.id, self.lower, self.upper
         );
 
+        let restart_interval = self.workload.restart_interval;
+
         let listeners: Vec<_> = (self.lower..self.upper)
-            .map(|port| thread::spawn(move || listen(port, self.workload.restart_interval)))
+            .map(|port| thread::spawn(move || listen(port, restart_interval)))
             .collect();
 
         for listener in listeners {
@@ -116,34 +119,34 @@ impl WorkerConfig {
         Ok(())
     }
 
-    pub fn syscalls_payload(self) -> Result<()> {
+    pub fn syscalls_payload(&self) -> Result<()> {
         info!(
             "Process {} from {}: {}-{}",
             self.process, self.cpu.id, self.lower, self.upper
         );
 
         loop {
+            let worker = *self;
             thread::spawn(move || {
-                self.do_syscall().unwrap();
-
-                let interval: f64 =
-                    thread_rng().sample(Exp::new(self.workload.arrival_rate).unwrap());
-                info!(
-                    "{}-{}: Interval {}, rounded {}",
-                    self.cpu.id,
-                    self.process,
-                    interval,
-                    (interval * 1000.0).round() as u64
-                );
-                thread::sleep(time::Duration::from_millis(
-                    (interval * 1000.0).round() as u64
-                ));
-                info!("{}-{}: Continue", self.cpu.id, self.process);
+                worker.do_syscall().unwrap();
             });
+
+            let interval: f64 = thread_rng().sample(Exp::new(self.workload.arrival_rate).unwrap());
+            info!(
+                "{}-{}: Interval {}, rounded {}",
+                self.cpu.id,
+                self.process,
+                interval,
+                (interval * 1000.0).round() as u64
+            );
+            thread::sleep(time::Duration::from_millis(
+                (interval * 1000.0).round() as u64
+            ));
+            info!("{}-{}: Continue", self.cpu.id, self.process);
         }
     }
 
-    fn do_syscall(self) -> std::io::Result<()> {
+    fn do_syscall(&self) -> std::io::Result<()> {
         match unsafe { syscall!(Sysno::getpid) } {
             Ok(_) => Ok(()),
             Err(err) => {
