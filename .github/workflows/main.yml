@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lint:
+  lint-and-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -21,6 +21,9 @@ jobs:
 
       - name: Run clippy
         run: cargo clippy
+
+      - name: Run tests
+        run: cargo test
 
   build:
     runs-on: ubuntu-latest
