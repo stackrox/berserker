@@ -8,7 +8,7 @@ use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use rand_distr::Exp;
 use syscalls::{syscall, Sysno};
 
-use crate::WorkloadConfig;
+use crate::{Workload, WorkloadConfig};
 
 #[derive(Debug, Copy, Clone)]
 pub struct WorkerConfig {
@@ -37,7 +37,13 @@ impl WorkerConfig {
     }
 
     fn spawn_process(&self, lifetime: u64) -> Result<()> {
-        if self.workload.random_process {
+        let Workload::Processes {
+            arrival_rate: _,
+            departure_rate: _,
+            random_process,
+        } = self.workload.workload else {unreachable!()};
+
+        if random_process {
             let uniq_arg: String = rand::thread_rng()
                 .sample_iter(&Alphanumeric)
                 .take(7)
@@ -76,14 +82,19 @@ impl WorkerConfig {
             self.process, self.cpu.id, self.lower, self.upper
         );
 
+        let Workload::Processes {
+            arrival_rate,
+            departure_rate,
+            random_process: _,
+        } = self.workload.workload else {unreachable!()};
+
         loop {
-            let lifetime: f64 =
-                thread_rng().sample(Exp::new(self.workload.departure_rate).unwrap());
+            let lifetime: f64 = thread_rng().sample(Exp::new(departure_rate).unwrap());
 
             let worker = *self;
             thread::spawn(move || worker.spawn_process((lifetime * 1000.0).round() as u64));
 
-            let interval: f64 = thread_rng().sample(Exp::new(self.workload.arrival_rate).unwrap());
+            let interval: f64 = thread_rng().sample(Exp::new(arrival_rate).unwrap());
             info!(
                 "{}-{}: Interval {}, rounded {}, lifetime {}, rounded {}",
                 self.cpu.id,
@@ -125,13 +136,15 @@ impl WorkerConfig {
             self.process, self.cpu.id, self.lower, self.upper
         );
 
+        let Workload::Syscalls { arrival_rate } = self.workload.workload else {unreachable!()};
+
         loop {
             let worker = *self;
             thread::spawn(move || {
                 worker.do_syscall().unwrap();
             });
 
-            let interval: f64 = thread_rng().sample(Exp::new(self.workload.arrival_rate).unwrap());
+            let interval: f64 = thread_rng().sample(Exp::new(arrival_rate).unwrap());
             info!(
                 "{}-{}: Interval {}, rounded {}",
                 self.cpu.id,
