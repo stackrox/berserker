@@ -2,6 +2,7 @@
 extern crate log;
 extern crate core_affinity;
 
+use berserker::worker::new_worker;
 use berserker::WorkloadConfig;
 use config::Config;
 use fork::{fork, Fork};
@@ -12,7 +13,7 @@ use rand::prelude::*;
 use rand_distr::Uniform;
 use rand_distr::Zipf;
 
-use berserker::{worker::WorkerConfig, Distribution, Workload};
+use berserker::{Distribution, Workload};
 
 fn main() {
     // Retrieve the IDs of all active CPU cores.
@@ -66,23 +67,10 @@ fn main() {
                 }
                 Ok(Fork::Child) => {
                     if core_affinity::set_for_current(cpu) {
-                        let worker_config = WorkerConfig::new(config, cpu, process, lower, upper);
+                        let worker = new_worker(config, cpu, process, lower, upper);
 
                         loop {
-                            match config.workload {
-                                Workload::Endpoints { distribution: _ } => {
-                                    worker_config.listen_payload()
-                                }
-                                Workload::Processes {
-                                    arrival_rate: _,
-                                    departure_rate: _,
-                                    random_process: _,
-                                } => worker_config.process_payload(),
-                                Workload::Syscalls { arrival_rate: _ } => {
-                                    worker_config.syscalls_payload()
-                                }
-                            }
-                            .unwrap();
+                            worker.run_payload().unwrap();
                         }
                     }
 
