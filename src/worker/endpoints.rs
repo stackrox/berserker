@@ -1,4 +1,4 @@
-use std::{net::TcpListener, thread, time};
+use std::{fmt::Display, net::TcpListener, thread, time};
 
 use core_affinity::CoreId;
 use log::info;
@@ -34,17 +34,11 @@ impl EndpointWorker {
 
 impl Worker for EndpointWorker {
     fn run_payload(&self) -> Result<(), WorkerError> {
-        let BaseConfig {
-            cpu,
-            process,
-            lower,
-            upper,
-        } = self.config;
-        info!("Process {} from {}: {}-{}", process, cpu.id, lower, upper);
+        info!("{self}");
 
         let restart_interval = self.workload.restart_interval;
 
-        let listeners: Vec<_> = (lower..upper)
+        let listeners: Vec<_> = (self.config.lower..self.config.upper)
             .map(|port| thread::spawn(move || listen(port, restart_interval)))
             .collect();
 
@@ -53,6 +47,12 @@ impl Worker for EndpointWorker {
         }
 
         Ok(())
+    }
+}
+
+impl Display for EndpointWorker {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.config)
     }
 }
 

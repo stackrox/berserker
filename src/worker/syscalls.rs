@@ -1,4 +1,4 @@
-use std::{thread, time};
+use std::{fmt::Display, thread, time};
 
 use core_affinity::CoreId;
 use log::{info, warn};
@@ -48,14 +48,7 @@ impl SyscallsWorker {
 
 impl Worker for SyscallsWorker {
     fn run_payload(&self) -> Result<(), super::WorkerError> {
-        let BaseConfig {
-            cpu,
-            process,
-            lower,
-            upper,
-        } = self.config;
-
-        info!("Process {} from {}: {}-{}", process, cpu.id, lower, upper);
+        info!("{self}");
 
         let Workload::Syscalls { arrival_rate } = self.workload.workload else {unreachable!()};
 
@@ -68,15 +61,21 @@ impl Worker for SyscallsWorker {
             let interval: f64 = thread_rng().sample(Exp::new(arrival_rate).unwrap());
             info!(
                 "{}-{}: Interval {}, rounded {}",
-                cpu.id,
-                process,
+                self.config.cpu.id,
+                self.config.process,
                 interval,
                 (interval * 1000.0).round() as u64
             );
             thread::sleep(time::Duration::from_millis(
                 (interval * 1000.0).round() as u64
             ));
-            info!("{}-{}: Continue", cpu.id, process);
+            info!("{}-{}: Continue", self.config.cpu.id, self.config.process);
         }
+    }
+}
+
+impl Display for SyscallsWorker {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.config)
     }
 }

@@ -31,6 +31,16 @@ struct BaseConfig {
     upper: usize,
 }
 
+impl Display for BaseConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Process {} from {}: {}-{}",
+            self.process, self.cpu.id, self.lower, self.upper
+        )
+    }
+}
+
 pub fn new_worker(
     workload: WorkloadConfig,
     cpu: CoreId,

@@ -2,8 +2,6 @@
 extern crate log;
 extern crate core_affinity;
 
-use berserker::worker::new_worker;
-use berserker::WorkloadConfig;
 use config::Config;
 use fork::{fork, Fork};
 use itertools::iproduct;
@@ -13,7 +11,7 @@ use rand::prelude::*;
 use rand_distr::Uniform;
 use rand_distr::Zipf;
 
-use berserker::{Distribution, Workload};
+use berserker::{worker::new_worker, Distribution, Workload, WorkloadConfig};
 
 fn main() {
     // Retrieve the IDs of all active CPU cores.
@@ -76,8 +74,8 @@ fn main() {
 
                     None
                 }
-                Err(_) => {
-                    warn!("Failed");
+                Err(e) => {
+                    warn!("Failed: {e:?}");
                     None
                 }
             }

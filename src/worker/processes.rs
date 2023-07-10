@@ -1,4 +1,4 @@
-use std::{process::Command, thread, time};
+use std::{fmt::Display, process::Command, thread, time};
 
 use core_affinity::CoreId;
 use fork::{fork, Fork};
@@ -81,13 +81,7 @@ impl ProcessesWorker {
 
 impl Worker for ProcessesWorker {
     fn run_payload(&self) -> Result<(), super::WorkerError> {
-        let BaseConfig {
-            cpu,
-            process,
-            lower,
-            upper,
-        } = self.config;
-        info!("Process {} from {}: {}-{}", process, cpu.id, lower, upper);
+        info!("{self}");
 
         let Workload::Processes {
             arrival_rate,
@@ -104,8 +98,8 @@ impl Worker for ProcessesWorker {
             let interval: f64 = thread_rng().sample(Exp::new(arrival_rate).unwrap());
             info!(
                 "{}-{}: Interval {}, rounded {}, lifetime {}, rounded {}",
-                cpu.id,
-                process,
+                self.config.cpu.id,
+                self.config.process,
                 interval,
                 (interval * 1000.0).round() as u64,
                 lifetime,
@@ -114,7 +108,13 @@ impl Worker for ProcessesWorker {
             thread::sleep(time::Duration::from_millis(
                 (interval * 1000.0).round() as u64
             ));
-            info!("{}-{}: Continue", cpu.id, process);
+            info!("{}-{}: Continue", self.config.cpu.id, self.config.process);
         }
+    }
+}
+
+impl Display for ProcessesWorker {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.config)
     }
 }
