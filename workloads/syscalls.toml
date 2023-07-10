@@ -1,0 +1,5 @@
+restart_interval = 10
+
+[workload]
+type = "syscalls"
+arrival_rate = 10.0
