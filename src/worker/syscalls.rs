@@ -17,20 +17,9 @@ pub struct SyscallsWorker {
 }
 
 impl SyscallsWorker {
-    pub fn new(
-        workload: WorkloadConfig,
-        cpu: CoreId,
-        process: usize,
-        lower: usize,
-        upper: usize,
-    ) -> Self {
+    pub fn new(workload: WorkloadConfig, cpu: CoreId, process: usize) -> Self {
         SyscallsWorker {
-            config: BaseConfig {
-                cpu,
-                process,
-                lower,
-                upper,
-            },
+            config: BaseConfig { cpu, process },
             workload,
         }
     }

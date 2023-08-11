@@ -18,20 +18,9 @@ pub struct ProcessesWorker {
 }
 
 impl ProcessesWorker {
-    pub fn new(
-        workload: WorkloadConfig,
-        cpu: CoreId,
-        process: usize,
-        lower: usize,
-        upper: usize,
-    ) -> Self {
+    pub fn new(workload: WorkloadConfig, cpu: CoreId, process: usize) -> Self {
         ProcessesWorker {
-            config: BaseConfig {
-                cpu,
-                process,
-                lower,
-                upper,
-            },
+            config: BaseConfig { cpu, process },
             workload,
         }
     }
@@ -42,12 +31,7 @@ impl ProcessesWorker {
             departure_rate: _,
             random_process,
         } = self.workload.workload else { unreachable!() };
-        let BaseConfig {
-            cpu,
-            process,
-            lower: _,
-            upper: _,
-        } = self.config;
+        let BaseConfig { cpu, process } = self.config;
 
         if random_process {
             let uniq_arg: String = rand::thread_rng()

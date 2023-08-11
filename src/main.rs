@@ -7,11 +7,8 @@ use fork::{fork, Fork};
 use itertools::iproduct;
 use nix::sys::wait::waitpid;
 use nix::unistd::Pid;
-use rand::prelude::*;
-use rand_distr::Uniform;
-use rand_distr::Zipf;
 
-use berserker::{worker::new_worker, Distribution, Workload, WorkloadConfig};
+use berserker::{worker::new_worker, WorkloadConfig};
 
 fn main() {
     // Retrieve the IDs of all active CPU cores.
@@ -36,27 +33,7 @@ fn main() {
     // Create processes for each active CPU core.
     let handles: Vec<_> = iproduct!(core_ids.into_iter(), 0..9)
         .map(|(cpu, process)| {
-            if let Workload::Endpoints { distribution } = config.workload {
-                match distribution {
-                    Distribution::Zipfian { n_ports, exponent } => {
-                        let n_ports: f64 =
-                            thread_rng().sample(Zipf::new(n_ports, exponent).unwrap());
-
-                        lower = upper;
-                        upper += n_ports as usize;
-                    }
-                    Distribution::Uniform {
-                        lower: config_lower,
-                        upper: config_upper,
-                    } => {
-                        // TODO: Double check this branch
-                        let n_ports = thread_rng().sample(Uniform::new(config_lower, config_upper));
-
-                        lower = upper;
-                        upper += n_ports as usize;
-                    }
-                }
-            }
+            let worker = new_worker(config, cpu, process, &mut lower, &mut upper);
 
             match fork() {
                 Ok(Fork::Parent(child)) => {
@@ -65,8 +42,6 @@ fn main() {
                 }
                 Ok(Fork::Child) => {
                     if core_affinity::set_for_current(cpu) {
-                        let worker = new_worker(config, cpu, process, lower, upper);
-
                         loop {
                             worker.run_payload().unwrap();
                         }

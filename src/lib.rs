@@ -102,7 +102,7 @@ mod tests {
         } = config;
         assert_eq!(restart_interval, 10);
 
-        if let Workload::Endpoints { distribution } = workload {
+        if let Workload::Endpoints { distribution, .. } = workload {
             if let Distribution::Zipfian { n_ports, exponent } = distribution {
                 assert_eq!(n_ports, 200);
                 assert_eq!(exponent, 1.4);

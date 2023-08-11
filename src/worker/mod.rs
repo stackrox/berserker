@@ -1,8 +1,10 @@
 use std::fmt::Display;
 
 use core_affinity::CoreId;
+use rand::{thread_rng, Rng};
+use rand_distr::{Uniform, Zipf};
 
-use crate::{Workload, WorkloadConfig};
+use crate::{Distribution, Workload, WorkloadConfig};
 
 use self::{endpoints::EndpointWorker, processes::ProcessesWorker, syscalls::SyscallsWorker};
 
@@ -27,17 +29,11 @@ pub trait Worker {
 struct BaseConfig {
     cpu: CoreId,
     process: usize,
-    lower: usize,
-    upper: usize,
 }
 
 impl Display for BaseConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Process {} from {}: {}-{}",
-            self.process, self.cpu.id, self.lower, self.upper
-        )
+        write!(f, "Process {} from {}", self.process, self.cpu.id)
     }
 }
 
@@ -45,20 +41,35 @@ pub fn new_worker(
     workload: WorkloadConfig,
     cpu: CoreId,
     process: usize,
-    lower: usize,
-    upper: usize,
+    lower_bound: &mut usize,
+    upper_bound: &mut usize,
 ) -> Box<dyn Worker> {
     match workload.workload {
-        Workload::Processes {
-            arrival_rate: _,
-            departure_rate: _,
-            random_process: _,
-        } => Box::new(ProcessesWorker::new(workload, cpu, process, lower, upper)),
-        Workload::Endpoints { distribution: _ } => {
-            Box::new(EndpointWorker::new(workload, cpu, process, lower, upper))
+        Workload::Processes { .. } => Box::new(ProcessesWorker::new(workload, cpu, process)),
+        Workload::Endpoints { distribution } => {
+            match distribution {
+                Distribution::Zipfian { n_ports, exponent } => {
+                    let n_ports: f64 = thread_rng().sample(Zipf::new(n_ports, exponent).unwrap());
+
+                    *lower_bound = *upper_bound;
+                    *upper_bound += n_ports as usize;
+                }
+                Distribution::Uniform { lower, upper } => {
+                    // TODO: Double check this branch
+                    let n_ports = thread_rng().sample(Uniform::new(lower, upper));
+
+                    *lower_bound = *upper_bound;
+                    *upper_bound += n_ports as usize;
+                }
+            }
+            Box::new(EndpointWorker::new(
+                workload,
+                cpu,
+                process,
+                *lower_bound,
+                *upper_bound,
+            ))
         }
-        Workload::Syscalls { arrival_rate: _ } => {
-            Box::new(SyscallsWorker::new(workload, cpu, process, lower, upper))
-        }
+        Workload::Syscalls { .. } => Box::new(SyscallsWorker::new(workload, cpu, process)),
     }
 }
