@@ -59,7 +59,7 @@ jobs:
           echo "TAG=$TAG" >> $GITHUB_ENV 
 
       - name: Retag and push stackrox-io
-         uses: stackrox/actions/images@v1
+         uses: stackrox/actions/images/retag-and-push@v1
          with:
            src-image: berserker
            dst-image: quay.io/stackrox-io/berserker:${{ env.TAG }}
