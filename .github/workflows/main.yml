@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - jv-push-image-in-ci
     tags:
       - 1.*
   pull_request:
