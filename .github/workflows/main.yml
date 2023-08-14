@@ -25,29 +25,29 @@ jobs:
       - name: Run tests
         run: cargo test
 
-  build-and-push:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - run: make
-
-      - name: Login to quay.io/stackrox-io
-        uses: docker/login-action@v2
-        with:
-          registry: quay.io
-          username: ${{ secrets.QUAY_STACKROX_IO_RW_USERNAME }}
-          password: ${{ secrets.QUAY_STACKROX_IO_RW_PASSWORD }}
-
-      - name: Get tag
-        run: |
-          TAG="$(make tag)"
-          echo "TAG=$TAG" >> $GITHUB_ENV 
-
-      - name: Retag and push stackrox-io
-        uses: stackrox/actions/images/retag-and-push@v1
-        with:
-          src-image: berserker
-          dst-image: quay.io/stackrox-io/berserker:${{ env.TAG }}
-          username: ${{ secrets.QUAY_STACKROX_IO_RW_USERNAME }}
-          password: ${{ secrets.QUAY_STACKROX_IO_RW_PASSWORD }}
-
+        #  build-and-push:
+        #    runs-on: ubuntu-latest
+        #    steps:
+        #      - uses: actions/checkout@v3
+        #      - run: make
+        #
+        #      - name: Login to quay.io/stackrox-io
+        #        uses: docker/login-action@v2
+        #        with:
+        #          registry: quay.io
+        #          username: ${{ secrets.QUAY_STACKROX_IO_RW_USERNAME }}
+        #          password: ${{ secrets.QUAY_STACKROX_IO_RW_PASSWORD }}
+        #
+        #      - name: Get tag
+        #        run: |
+        #          TAG="$(make tag)"
+        #          echo "TAG=$TAG" >> $GITHUB_ENV 
+        #
+        #      - name: Retag and push stackrox-io
+        #        uses: stackrox/actions/images/retag-and-push@v1
+        #        with:
+        #          src-image: berserker
+        #          dst-image: quay.io/stackrox-io/berserker:${{ env.TAG }}
+        #          username: ${{ secrets.QUAY_STACKROX_IO_RW_USERNAME }}
+        #          password: ${{ secrets.QUAY_STACKROX_IO_RW_PASSWORD }}
+        #
