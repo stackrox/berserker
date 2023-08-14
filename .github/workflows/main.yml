@@ -8,6 +8,9 @@ on:
     tags:
       - 1.*
   pull_request:
+    branches:
+      - main
+      - jv-push-image-in-ci
     types:
       - labeled
       - unlabeled
