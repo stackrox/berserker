@@ -47,7 +47,7 @@ jobs:
          uses: ./.github/actions/retag-and-push
          with:
            src-image: berserker
-           dst-image: quay.io/stackrox-io/berserker:${{ evn.TAG }}
+           dst-image: quay.io/stackrox-io/berserker:${{ env.TAG }}
            username: ${{ secrets.QUAY_STACKROX_IO_RW_USERNAME }}
            password: ${{ secrets.QUAY_STACKROX_IO_RW_PASSWORD }}
 
