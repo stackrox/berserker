@@ -25,8 +25,25 @@ jobs:
       - name: Run tests
         run: cargo test
 
-  build:
+  build-and-push:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
       - run: make
+
+      - name: Get tag
+        run: |
+          TAG="$(make tag)"
+          echo "TAG=$TAG" >> $GITHUB_ENV 
+
+      - name: Retag and push stackrox-io
+        uses: stackrox/actions/images/retag-and-push@v1
+        with:
+          src-image: berserker
+          dst-image: quay.io/rhacs-eng/qa:berserker-${{ env.TAG }}
+          username: ${{ secrets.QUAY_RHACS_ENG_RW_USERNAME }}
+          password: ${{ secrets.QUAY_RHACS_ENG_RW_PASSWORD }}
+
