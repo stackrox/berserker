@@ -71,7 +71,7 @@ impl Display for EndpointWorker {
 }
 
 fn listen(port: usize, sleep: u64) -> std::io::Result<()> {
-    let addr = format!("127.0.0.1:{port}");
+    let addr = format!("0.0.0.0:{port}");
     let listener = TcpListener::bind(addr)?;
 
     let _res = listener.incoming();
