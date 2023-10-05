@@ -39,7 +39,9 @@ impl Worker for SyscallsWorker {
     fn run_payload(&self) -> Result<(), super::WorkerError> {
         info!("{self}");
 
-        let Workload::Syscalls { arrival_rate } = self.workload.workload else {unreachable!()};
+        let Workload::Syscalls { arrival_rate } = self.workload.workload else {
+            unreachable!()
+        };
 
         loop {
             let worker = *self;

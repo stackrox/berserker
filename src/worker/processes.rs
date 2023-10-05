@@ -30,7 +30,10 @@ impl ProcessesWorker {
             arrival_rate: _,
             departure_rate: _,
             random_process,
-        } = self.workload.workload else { unreachable!() };
+        } = self.workload.workload
+        else {
+            unreachable!()
+        };
         let BaseConfig { cpu, process } = self.config;
 
         if random_process {
@@ -71,7 +74,10 @@ impl Worker for ProcessesWorker {
             arrival_rate,
             departure_rate,
             random_process: _,
-        } = self.workload.workload else {unreachable!()};
+        } = self.workload.workload
+        else {
+            unreachable!()
+        };
 
         loop {
             let lifetime: f64 = thread_rng().sample(Exp::new(departure_rate).unwrap());
