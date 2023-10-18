@@ -1,37 +1,96 @@
 use serde::Deserialize;
+use std::fmt::Display;
+use core_affinity::CoreId;
 
 pub mod worker;
 
+/// Main workload configuration, contains general bits for all types of
+/// workloads plus workload specific data.
+#[derive(Debug, Copy, Clone, Deserialize)]
+pub struct WorkloadConfig {
+
+    /// An amount of time for workload payload to run before restarting.
+    pub restart_interval: u64,
+
+    /// Custom workload configuration.
+    pub workload: Workload,
+}
+
+/// Workload specific configuration, contains one enum value for each
+/// workload type.
+#[derive(Debug, Copy, Clone, Deserialize)]
+#[serde(rename_all = "lowercase", tag = "type")]
+pub enum Workload {
+
+    /// How to listen on ports.
+    Endpoints {
+
+        /// Governing the number of ports open.
+        #[serde(flatten)]
+        distribution: Distribution,
+    },
+
+    /// How to spawn processes.
+    Processes {
+
+        /// How often a new process will be spawn.
+        arrival_rate: f64,
+
+        /// How long processes are going to live.
+        departure_rate: f64,
+
+        /// Spawn a new process with random arguments.
+        random_process: bool,
+    },
+
+    /// How to invoke syscalls
+    Syscalls {
+
+        /// How often to invoke a syscall.
+        arrival_rate: f64,
+    },
+}
+
+/// Distribution for number of ports to listen on
 #[derive(Debug, Copy, Clone, Deserialize)]
 #[serde(tag = "distribution")]
 pub enum Distribution {
+
+    /// Few processes are opening large number of ports, the rest are only few.
     #[serde(alias = "zipf")]
     Zipfian { n_ports: u64, exponent: f64 },
+
+    /// Every process opens more or less the same number of ports.
     #[serde(alias = "uniform")]
     Uniform { lower: u64, upper: u64 },
 }
 
-#[derive(Debug, Copy, Clone, Deserialize)]
-#[serde(rename_all = "lowercase", tag = "type")]
-pub enum Workload {
-    Endpoints {
-        #[serde(flatten)]
-        distribution: Distribution,
-    },
-    Processes {
-        arrival_rate: f64,
-        departure_rate: f64,
-        random_process: bool,
-    },
-    Syscalls {
-        arrival_rate: f64,
-    },
+#[derive(Debug)]
+pub enum WorkerError {}
+
+impl Display for WorkerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "worker error found")
+    }
 }
 
-#[derive(Debug, Copy, Clone, Deserialize)]
-pub struct WorkloadConfig {
-    pub restart_interval: u64,
-    pub workload: Workload,
+/// Generic interface for workers of any type
+pub trait Worker {
+    fn run_payload(&self) -> Result<(), WorkerError>;
+}
+
+/// General information for each worker, on which CPU is it running
+/// and what is the process number.
+#[derive(Debug, Copy, Clone)]
+struct BaseConfig {
+    cpu: CoreId,
+    process: usize,
+}
+
+impl Display for BaseConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Process {} from {}", self.process, self.cpu.id)
+    }
 }
 
 #[cfg(test)]

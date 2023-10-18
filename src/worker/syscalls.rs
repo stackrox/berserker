@@ -6,9 +6,7 @@ use rand::{thread_rng, Rng};
 use rand_distr::Exp;
 use syscalls::{syscall, Sysno};
 
-use crate::{Workload, WorkloadConfig};
-
-use super::{BaseConfig, Worker};
+use crate::{Workload, WorkloadConfig, BaseConfig, Worker, WorkerError};
 
 #[derive(Debug, Copy, Clone)]
 pub struct SyscallsWorker {
@@ -36,7 +34,7 @@ impl SyscallsWorker {
 }
 
 impl Worker for SyscallsWorker {
-    fn run_payload(&self) -> Result<(), super::WorkerError> {
+    fn run_payload(&self) -> Result<(), WorkerError> {
         info!("{self}");
 
         let Workload::Syscalls { arrival_rate } = self.workload.workload else {

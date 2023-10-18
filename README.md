@@ -26,7 +26,27 @@ workloads:
   Poisson process.
 
 Every workload is executed via set of worker processes, that are distributed
-among available system CPU cores.
+among available system CPU cores to fully utilize system resources.
+
+# How to contribute
+
+* Make sure you've got recent enough version of Rust compiler. At the moment
+  the minimal required version is 1.71 .
+
+* Build project either directly using `cargo build`, or using containerized
+  version implemented as a make `all` target.
+
+* Find out what you need to change. The rule of thumb: if it has something to
+  do with a specific workload type, it goes into a corresponding workload
+  module under the `worker` directory; if it's a general improvement, feel free
+  to modify anything outside workers.
+
+* Do all sorts of hacking. Use `RUST_LOG=info` environment variable for getting
+  verbose output when troubleshooting.
+
+* Make sure tests are passing, `cargo test`.
+
+* Run linter, `cargo clippy`.
 
 \[1\]: https://en.wikipedia.org/wiki/Poisson_point_process
 

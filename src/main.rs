@@ -1,3 +1,18 @@
+//! Berserker workload generator.
+//!
+//! The implementation is covering two part:
+//! * workload independent logic
+//! * workload specific details
+//!
+//! Those have to be isolated as much as possible, and working together via
+//! configuration data structures and worker interface.
+//!
+//! The execution contains following steps:
+//! * Consume provided configuration
+//! * For each available CPU core spawn specified number of worker processes
+//! * Invoke a workload-specific logic via run_payload
+//! * Wait for all the workers to finish
+
 #[macro_use]
 extern crate log;
 extern crate core_affinity;
