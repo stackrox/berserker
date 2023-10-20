@@ -1,6 +1,6 @@
+use core_affinity::CoreId;
 use serde::Deserialize;
 use std::fmt::Display;
-use core_affinity::CoreId;
 
 pub mod worker;
 
@@ -8,7 +8,6 @@ pub mod worker;
 /// workloads plus workload specific data.
 #[derive(Debug, Copy, Clone, Deserialize)]
 pub struct WorkloadConfig {
-
     /// An amount of time for workload payload to run before restarting.
     pub restart_interval: u64,
 
@@ -21,10 +20,8 @@ pub struct WorkloadConfig {
 #[derive(Debug, Copy, Clone, Deserialize)]
 #[serde(rename_all = "lowercase", tag = "type")]
 pub enum Workload {
-
     /// How to listen on ports.
     Endpoints {
-
         /// Governing the number of ports open.
         #[serde(flatten)]
         distribution: Distribution,
@@ -32,7 +29,6 @@ pub enum Workload {
 
     /// How to spawn processes.
     Processes {
-
         /// How often a new process will be spawn.
         arrival_rate: f64,
 
@@ -45,7 +41,6 @@ pub enum Workload {
 
     /// How to invoke syscalls
     Syscalls {
-
         /// How often to invoke a syscall.
         arrival_rate: f64,
     },
@@ -55,7 +50,6 @@ pub enum Workload {
 #[derive(Debug, Copy, Clone, Deserialize)]
 #[serde(tag = "distribution")]
 pub enum Distribution {
-
     /// Few processes are opening large number of ports, the rest are only few.
     #[serde(alias = "zipf")]
     Zipfian { n_ports: u64, exponent: f64 },

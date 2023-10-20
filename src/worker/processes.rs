@@ -7,7 +7,7 @@ use nix::{sys::wait::waitpid, unistd::Pid};
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use rand_distr::Exp;
 
-use crate::{Workload, WorkloadConfig, BaseConfig, Worker, WorkerError};
+use crate::{BaseConfig, Worker, WorkerError, Workload, WorkloadConfig};
 
 #[derive(Debug, Clone, Copy)]
 pub struct ProcessesWorker {

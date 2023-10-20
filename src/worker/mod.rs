@@ -2,7 +2,7 @@ use core_affinity::CoreId;
 use rand::{thread_rng, Rng};
 use rand_distr::{Uniform, Zipf};
 
-use crate::{Distribution, Workload, WorkloadConfig, Worker};
+use crate::{Distribution, Worker, Workload, WorkloadConfig};
 
 use self::{endpoints::EndpointWorker, processes::ProcessesWorker, syscalls::SyscallsWorker};
 

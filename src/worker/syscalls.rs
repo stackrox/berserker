@@ -6,7 +6,7 @@ use rand::{thread_rng, Rng};
 use rand_distr::Exp;
 use syscalls::{syscall, Sysno};
 
-use crate::{Workload, WorkloadConfig, BaseConfig, Worker, WorkerError};
+use crate::{BaseConfig, Worker, WorkerError, Workload, WorkloadConfig};
 
 #[derive(Debug, Copy, Clone)]
 pub struct SyscallsWorker {
