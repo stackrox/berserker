@@ -1,41 +1,14 @@
-use std::fmt::Display;
-
 use core_affinity::CoreId;
 use rand::{thread_rng, Rng};
 use rand_distr::{Uniform, Zipf};
 
-use crate::{Distribution, Workload, WorkloadConfig};
+use crate::{Distribution, Worker, Workload, WorkloadConfig};
 
 use self::{endpoints::EndpointWorker, processes::ProcessesWorker, syscalls::SyscallsWorker};
 
 pub mod endpoints;
 pub mod processes;
 pub mod syscalls;
-
-#[derive(Debug)]
-pub enum WorkerError {}
-
-impl Display for WorkerError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "worker error found")
-    }
-}
-
-pub trait Worker {
-    fn run_payload(&self) -> Result<(), WorkerError>;
-}
-
-#[derive(Debug, Copy, Clone)]
-struct BaseConfig {
-    cpu: CoreId,
-    process: usize,
-}
-
-impl Display for BaseConfig {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Process {} from {}", self.process, self.cpu.id)
-    }
-}
 
 pub fn new_worker(
     workload: WorkloadConfig,

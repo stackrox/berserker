@@ -3,9 +3,7 @@ use std::{fmt::Display, net::TcpListener, thread, time};
 use core_affinity::CoreId;
 use log::info;
 
-use crate::WorkloadConfig;
-
-use super::{BaseConfig, Worker, WorkerError};
+use crate::{BaseConfig, Worker, WorkerError, WorkloadConfig};
 
 struct EndpointWorkload {
     restart_interval: u64,
