@@ -33,8 +33,12 @@ fn main() {
         .add_source(config::File::with_name("/etc/berserker/workload.toml").required(false))
         .add_source(config::File::with_name("workload.toml").required(false))
         // Add in settings from the environment (with a prefix of APP)
-        // Eg.. `WORKLOAD_DEBUG=1 ./target/app` would set the `debug` key
-        .add_source(config::Environment::with_prefix("WORKLOAD"))
+        // Eg.. `BERSERKER__WORKLOAD__ARRIVAL_RATE=1` would set the `arrival_rate` key
+        .add_source(
+            config::Environment::with_prefix("BERSERKER")
+                .try_parsing(true)
+                .separator("__"),
+        )
         .build()
         .unwrap()
         .try_deserialize::<WorkloadConfig>()
