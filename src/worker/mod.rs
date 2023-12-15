@@ -4,11 +4,15 @@ use rand_distr::{Uniform, Zipf};
 
 use crate::{Distribution, Worker, Workload, WorkloadConfig};
 
-use self::{endpoints::EndpointWorker, processes::ProcessesWorker, syscalls::SyscallsWorker};
+use self::{
+    endpoints::EndpointWorker, processes::ProcessesWorker, syscalls::SyscallsWorker,
+    template::TemplateWorker,
+};
 
 pub mod endpoints;
 pub mod processes;
 pub mod syscalls;
+pub mod template;
 
 pub fn new_worker(
     workload: WorkloadConfig,
@@ -44,5 +48,6 @@ pub fn new_worker(
             ))
         }
         Workload::Syscalls { .. } => Box::new(SyscallsWorker::new(workload, cpu, process)),
+        Workload::Template { .. } => Box::new(TemplateWorker::new(workload, cpu, process)),
     }
 }
