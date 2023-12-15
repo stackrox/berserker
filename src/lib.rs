@@ -44,6 +44,9 @@ pub enum Workload {
         /// How often to invoke a syscall.
         arrival_rate: f64,
     },
+
+    /// For documentation purposes
+    Template {},
 }
 
 /// Distribution for number of ports to listen on

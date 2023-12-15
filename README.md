@@ -48,6 +48,13 @@ among available system CPU cores to fully utilize system resources.
 
 * Run linter, `cargo clippy`.
 
+# Adding a new worker
+
+If your goal is to implement a new worker, take a look at `TemplateWorker`.
+It's a dummy worker implementation, the sole purpose of which is to show all
+parts that have to be touched to wire up a custom worker. Copy the template
+over under a new name, and you'll get a decent ground for development.
+
 \[1\]: https://en.wikipedia.org/wiki/Poisson_point_process
 
 \[2\]: "Open versus closed: A cautionary tale". Schroeder, B., Wierman, A. and
