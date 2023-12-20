@@ -44,6 +44,12 @@ pub enum Workload {
         /// How often to invoke a syscall.
         arrival_rate: f64,
     },
+
+    /// How to open network connections
+    Network {
+        /// Whether the instance functions as a server or client
+        server: bool,
+    }
 }
 
 /// Distribution for number of ports to listen on
