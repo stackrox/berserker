@@ -1,25 +1,23 @@
 use std::{
     fmt::Display,
     io::{prelude::*, BufReader},
-    net::{TcpListener},
+    net::TcpListener,
 };
 
 use core_affinity::CoreId;
-use log::{trace, info, debug};
-use std::time::{SystemTime, UNIX_EPOCH};
+use log::{debug, info, trace, error};
 use std::os::unix::io::AsRawFd;
 use std::str::{self, FromStr};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{BaseConfig, Worker, WorkerError, Workload, WorkloadConfig};
 
 use smoltcp::iface::{Config, Interface, SocketSet};
-use smoltcp::phy::{
-    wait as phy_wait, Device, Medium, FaultInjector, Tracer, TunTapInterface
-};
+use smoltcp::phy::{wait as phy_wait, Device, FaultInjector, Medium, Tracer, TunTapInterface};
 use smoltcp::socket::tcp;
+use smoltcp::socket::AnySocket;
 use smoltcp::time::Instant;
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
-use smoltcp::socket::AnySocket;
 
 pub struct NetworkWorker {
     config: BaseConfig,
@@ -39,24 +37,42 @@ impl NetworkWorker {
         }
     }
 
-    fn start_server(&self) -> Result<(), WorkerError> {
-        let listener = TcpListener::bind(("192.168.0.1", 8080)).unwrap();
+    fn start_server(&self, addr: Ipv4Address, target_port: u16) -> Result<(), WorkerError> {
+        let listener = TcpListener::bind((addr.to_string(), target_port)).unwrap();
 
         for stream in listener.incoming() {
             let mut stream = stream.unwrap();
-            let mut buf_reader = BufReader::new(&stream);
-            let mut buffer = Vec::new();
-            buf_reader.read_to_end(&mut buffer).unwrap();
-            trace!("Received {:?}", buffer);
+            loop {
+                let mut buf_reader = BufReader::new(&stream);
+                let mut buffer = String::new();
+                //buf_reader.read_to_end(&mut buffer).unwrap();
+                match buf_reader.read_line(&mut buffer) {
+                    Ok(0) => {
+                        trace!("EOF {:?}", buffer);
+                        break;
+                    }
+                    Ok(n) => {
+                        trace!("Received {:?}", buffer);
 
-            let response = "hello";
-            stream.write_all(response.as_bytes()).unwrap();
+                        let response = "hello\n";
+                        stream.write_all(response.as_bytes()).unwrap();
+                    },
+                    Err(e) => {
+                        error!("ERROR: got '{}' when reading a line", e)
+                    }
+                }
+            }
         }
 
         Ok(())
     }
 
-    fn start_client(&self) -> Result<(), WorkerError> {
+    fn start_client(
+        &self,
+        addr: Ipv4Address,
+        target_port: u16,
+        nconnections: u32,
+    ) -> Result<(), WorkerError> {
         let tap = "tap0";
         let device = TunTapInterface::new(&tap, Medium::Ethernet).unwrap();
         let fd = device.as_raw_fd();
@@ -71,7 +87,6 @@ impl NetworkWorker {
         });
 
         let mut device = FaultInjector::new(device, seed);
-        let address = IpAddress::from_str("192.168.0.1").expect("invalid address format");
         let nr_sockets = 10;
 
         // Create interface
@@ -88,18 +103,15 @@ impl NetworkWorker {
         iface.set_any_ip(true);
         iface.update_ip_addrs(|ip_addrs| {
             ip_addrs
-                .push(IpCidr::new(IpAddress::v4(192, 168, 0, 1), 16))
+                .push(IpCidr::new(IpAddress::Ipv4(addr), 16))
                 .unwrap();
         });
 
-        iface
-            .routes_mut()
-            .add_default_ipv4_route(Ipv4Address::new(192, 168, 0, 1))
-            .unwrap();
+        iface.routes_mut().add_default_ipv4_route(addr).unwrap();
 
         let mut sockets = SocketSet::new(vec![]);
 
-        for i in 0..nr_sockets {
+        for i in 0..nconnections {
             // Create sockets
             let tcp_rx_buffer = tcp::SocketBuffer::new(vec![0; 1024]);
             let tcp_tx_buffer = tcp::SocketBuffer::new(vec![0; 1024]);
@@ -112,15 +124,26 @@ impl NetworkWorker {
         iface.poll(timestamp, &mut device, &mut sockets);
         let cx = iface.context();
 
-        for (i, socket) in sockets.iter_mut().filter_map(|(h, s)| tcp::Socket::downcast_mut(s)).enumerate() {
-            let index = i + 2;
-            let local_port = 49152 + rand::random::<u16>() % 16384;
-            let local_addr = IpAddress::v4(192, 168, (index / 255) as u8, (index % 255) as u8);
+        for (i, socket) in sockets
+            .iter_mut()
+            .filter_map(|(h, s)| tcp::Socket::downcast_mut(s))
+            .enumerate()
+        {
+            // 254 (a2 octet) * 254 (a3 octet) * 100 (port)
+            // gives us maximum 6451600 connections that could be opened
+            let index = i;
+            //let local_port = 49152 + rand::random::<u16>() % 16384;
+            let local_port = 49152 + (index % 100) as u16;
+            info!("addr {}, index {}", addr, index);
+            let local_addr = IpAddress::v4(
+                addr.0[0],
+                addr.0[1],
+                (((index / 100) + 2) / 255) as u8,
+                (((index / 100) + 2) % 255) as u8,
+            );
             info!("connecting from {}", local_addr);
             socket
-                .connect(cx,
-                         (address, 8080),
-                         (local_addr, local_port))
+                .connect(cx, (addr, target_port), (local_addr, local_port))
                 .unwrap();
         }
 
@@ -128,7 +151,11 @@ impl NetworkWorker {
             let timestamp = Instant::now();
             iface.poll(timestamp, &mut device, &mut sockets);
 
-            for (i, socket) in sockets.iter_mut().filter_map(|(h, s)| tcp::Socket::downcast_mut(s)).enumerate() {
+            for (i, socket) in sockets
+                .iter_mut()
+                .filter_map(|(h, s)| tcp::Socket::downcast_mut(s))
+                .enumerate()
+            {
                 if socket.can_recv() {
                     socket
                         .recv(|data| {
@@ -139,11 +166,11 @@ impl NetworkWorker {
                 }
 
                 if socket.may_send() {
-                    info!("sending request from {}",
-                           socket.local_endpoint().unwrap().addr);
-                    socket
-                        .send_slice(b"hello")
-                        .expect("cannot send");
+                    info!(
+                        "sending request from {}",
+                        socket.local_endpoint().unwrap().addr
+                    );
+                    socket.send_slice(b"hello\n").expect("cannot send");
                 }
             }
 
@@ -160,15 +187,27 @@ impl Worker for NetworkWorker {
 
         let Workload::Network {
             server,
+            address,
+            target_port,
+            arrival_rate,
+            departure_rate,
+            nconnections,
         } = self.workload.workload
         else {
             unreachable!()
         };
 
         if server {
-            self.start_server();
+            self.start_server(
+                Ipv4Address([address.0, address.1, address.2, address.3]),
+                target_port,
+            );
         } else {
-            self.start_client();
+            self.start_client(
+                Ipv4Address([address.0, address.1, address.2, address.3]),
+                target_port,
+                nconnections,
+            );
         }
 
         Ok(())

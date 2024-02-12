@@ -5,14 +5,14 @@ use rand_distr::{Uniform, Zipf};
 use crate::{Distribution, Worker, Workload, WorkloadConfig};
 
 use self::{
-    endpoints::EndpointWorker, processes::ProcessesWorker, syscalls::SyscallsWorker,
-    network::NetworkWorker,
+    endpoints::EndpointWorker, network::NetworkWorker, processes::ProcessesWorker,
+    syscalls::SyscallsWorker,
 };
 
 pub mod endpoints;
+pub mod network;
 pub mod processes;
 pub mod syscalls;
-pub mod network;
 
 pub fn new_worker(
     workload: WorkloadConfig,

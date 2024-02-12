@@ -18,11 +18,11 @@ extern crate log;
 extern crate core_affinity;
 
 use config::Config;
+use core_affinity::CoreId;
 use fork::{fork, Fork};
 use itertools::iproduct;
 use nix::sys::wait::waitpid;
 use nix::unistd::Pid;
-use core_affinity::CoreId;
 
 use berserker::{worker::new_worker, WorkloadConfig};
 
@@ -54,7 +54,7 @@ fn main() {
     //
     //let handles: Vec<_> = iproduct!(core_ids.into_iter(), 0..9)
     let mut core_ids: Vec<CoreId> = Vec::new();
-    core_ids.push(CoreId{ id: 0 });
+    core_ids.push(CoreId { id: 0 });
     let handles: Vec<_> = iproduct!(core_ids.into_iter(), 0..1)
         .map(|(cpu, process)| {
             let worker = new_worker(config, cpu, process, &mut lower, &mut upper);
