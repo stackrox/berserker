@@ -25,7 +25,7 @@ spec:
         effect: NoSchedule
       containers:
       - name: berserker
-        image: quay.io/rhacs-eng/qa:berserker-1.0-35-g3d1715a7f3
+        image: quay.io/rhacs-eng/qa:berserker-1.0-45-g74de174922
         volumeMounts:
           - name: config
             mountPath: "/etc/berserker"
