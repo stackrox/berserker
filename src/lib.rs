@@ -11,8 +11,27 @@ pub struct WorkloadConfig {
     /// An amount of time for workload payload to run before restarting.
     pub restart_interval: u64,
 
+    /// Controls per-core mode to handle number of workers. If per-core mode
+    /// is enabled, `workers` will be treated as a number of workers per CPU
+    /// core. Otherwise it will be treated as a total number of workers.
+    #[serde(default = "default_per_core")]
+    pub per_core: bool,
+
+    /// How many workers to spin, depending on `per_core` in either per-core
+    /// or total mode.
+    #[serde(default = "default_workers")]
+    pub workers: usize,
+
     /// Custom workload configuration.
     pub workload: Workload,
+}
+
+fn default_workers() -> usize {
+    1
+}
+
+fn default_per_core() -> bool {
+    true
 }
 
 /// Workload specific configuration, contains one enum value for each
@@ -114,6 +133,7 @@ mod tests {
         let WorkloadConfig {
             restart_interval,
             workload,
+            ..
         } = config;
         assert_eq!(restart_interval, 10);
         if let Workload::Processes {
@@ -152,6 +172,7 @@ mod tests {
         let WorkloadConfig {
             restart_interval,
             workload,
+            ..
         } = config;
         assert_eq!(restart_interval, 10);
 
@@ -189,6 +210,7 @@ mod tests {
         let WorkloadConfig {
             restart_interval,
             workload,
+            ..
         } = config;
         assert_eq!(restart_interval, 10);
 
@@ -224,6 +246,7 @@ mod tests {
         let WorkloadConfig {
             restart_interval,
             workload,
+            ..
         } = config;
         assert_eq!(restart_interval, 10);
         if let Workload::Syscalls { arrival_rate } = workload {
