@@ -79,7 +79,9 @@ pub enum Distribution {
 }
 
 #[derive(Debug)]
-pub enum WorkerError {}
+pub enum WorkerError {
+    Internal,
+}
 
 impl Display for WorkerError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
