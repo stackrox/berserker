@@ -29,7 +29,10 @@ use berserker::{worker::new_worker, WorkloadConfig};
 fn main() {
     let config = Config::builder()
         // Add in `./Settings.toml`
-        .add_source(config::File::with_name("/etc/berserker/workload.toml").required(false))
+        .add_source(
+            config::File::with_name("/etc/berserker/workload.toml")
+                .required(false),
+        )
         .add_source(config::File::with_name("workload.toml").required(false))
         // Add in settings from the environment (with a prefix of APP)
         // Eg.. `WORKLOAD_DEBUG=1 ./target/app` would set the `debug` key
@@ -55,7 +58,8 @@ fn main() {
 
     let handles: Vec<_> = iproduct!(core_ids.into_iter(), 0..config.workers)
         .map(|(cpu, process)| {
-            let worker = new_worker(config, cpu, process, &mut lower, &mut upper);
+            let worker =
+                new_worker(config, cpu, process, &mut lower, &mut upper);
 
             match fork() {
                 Ok(Fork::Parent(child)) => {
