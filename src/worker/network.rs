@@ -1,0 +1,362 @@
+use core_affinity::CoreId;
+use log::{debug, info, trace};
+use rand::{thread_rng, Rng};
+use rand_distr::Exp;
+use std::collections::HashMap;
+use std::os::unix::io::AsRawFd;
+use std::str;
+use std::time::{SystemTime, UNIX_EPOCH};
+use std::{
+    fmt::Display,
+    io::{prelude::*, BufReader},
+    net::TcpListener,
+};
+
+use crate::{BaseConfig, Worker, WorkerError, Workload, WorkloadConfig};
+
+use smoltcp::iface::{Config, Interface, SocketSet};
+use smoltcp::phy::{
+    wait as phy_wait, Device, FaultInjector, Medium, Tracer, TunTapInterface,
+};
+use smoltcp::socket::tcp;
+use smoltcp::socket::AnySocket;
+use smoltcp::time::Instant;
+use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
+
+pub struct NetworkWorker {
+    config: BaseConfig,
+    workload: WorkloadConfig,
+}
+
+impl NetworkWorker {
+    pub fn new(workload: WorkloadConfig, cpu: CoreId, process: usize) -> Self {
+        NetworkWorker {
+            config: BaseConfig { cpu, process },
+            workload: workload,
+        }
+    }
+
+    /// Start a simple server. The client side is going to be a networking
+    /// worker as well, so for convenience of troubleshooting do not error
+    /// out if something unexpected happened, log and proceed instead.
+    fn start_server(
+        &self,
+        addr: Ipv4Address,
+        target_port: u16,
+    ) -> Result<(), WorkerError> {
+        let listener =
+            TcpListener::bind((addr.to_string(), target_port)).unwrap();
+
+        for stream in listener.incoming() {
+            let mut stream = stream.unwrap();
+            loop {
+                let mut buf_reader = BufReader::new(&stream);
+                let mut buffer = String::new();
+
+                match buf_reader.read_line(&mut buffer) {
+                    Ok(0) => {
+                        // EOF, exit
+                        break;
+                    }
+                    Ok(_n) => {
+                        trace!("Received {:?}", buffer);
+
+                        let response = "hello\n";
+                        match stream.write_all(response.as_bytes()) {
+                            Ok(_) => {
+                                // Response is sent, handle the next one
+                                break;
+                            }
+                            Err(e) => {
+                                trace!("ERROR: sending response, {}", e);
+                                break;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        trace!("ERROR: reading a line, {}", e)
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn start_client(
+        &self,
+        addr: Ipv4Address,
+        target_port: u16,
+        nconnections: u32,
+        arrival_rate: f64,
+        departure_rate: f64,
+    ) -> Result<(), WorkerError> {
+        let (mut iface, mut device, fd) = self.setup_tap(addr);
+        let cx = iface.context();
+
+        // Dynamic sockets are going to be responsible for connections that
+        // will be opened/closed during the test. Every record contains:
+        // * socket handle (just an index inside smoltcp)
+        // * time when the connection was opened
+        // * connection lifetime
+        let mut dynamic_sockets = HashMap::new();
+
+        // Open static set of connections, that are going to live throughout
+        // the whole run
+        let mut sockets = SocketSet::new(vec![]);
+
+        for _i in 0..nconnections {
+            let tcp_rx_buffer = tcp::SocketBuffer::new(vec![0; 1024]);
+            let tcp_tx_buffer = tcp::SocketBuffer::new(vec![0; 1024]);
+            let tcp_socket = tcp::Socket::new(tcp_rx_buffer, tcp_tx_buffer);
+
+            sockets.add(tcp_socket);
+        }
+
+        for (i, socket) in sockets
+            .iter_mut()
+            .filter_map(|(_h, s)| tcp::Socket::downcast_mut(s))
+            .enumerate()
+        {
+            let index = i;
+            let (local_addr, local_port) =
+                self.get_local_addr_port(addr, index);
+            info!("connecting from {}:{}", local_addr, local_port);
+            socket
+                .connect(cx, (addr, target_port), (local_addr, local_port))
+                .unwrap();
+        }
+
+        // Timer and waiting interval for the next new dynamic connection
+        let mut arrivals = SystemTime::now();
+        let mut interval: f64 =
+            thread_rng().sample(Exp::new(arrival_rate).unwrap());
+
+        // Current number of opened connections, both dynamic and static
+        let mut total_conns = nconnections;
+
+        // The main loop, where connection state will be updated, and dynamic
+        // connections will be opened/closed
+        loop {
+            // Vector of sockets to close at the end of each loop
+            let mut close_sockets = vec![];
+
+            let timestamp = Instant::now();
+            iface.poll(timestamp, &mut device, &mut sockets);
+            let cx = iface.context();
+
+            let elapsed = arrivals.elapsed().unwrap().as_millis();
+            if elapsed > (interval * 1000.0).round() as u128 {
+                // Time for a new connection, add a socket, it state is going
+                // to be updated during the next loop round
+                total_conns = total_conns + 1;
+
+                let tcp_rx_buffer = tcp::SocketBuffer::new(vec![0; 1024]);
+                let tcp_tx_buffer = tcp::SocketBuffer::new(vec![0; 1024]);
+                let mut socket = tcp::Socket::new(tcp_rx_buffer, tcp_tx_buffer);
+
+                let index = total_conns as usize;
+                let (local_addr, local_port) =
+                    self.get_local_addr_port(addr, index);
+
+                socket
+                    .connect(cx, (addr, target_port), (local_addr, local_port))
+                    .unwrap();
+
+                let handle = sockets.add(socket);
+                let lifetime: f64 =
+                    thread_rng().sample(Exp::new(departure_rate).unwrap());
+
+                dynamic_sockets.insert(handle, (SystemTime::now(), lifetime));
+
+                info!(
+                    "New connecting from {}:{}, lifetime {}, index {}",
+                    local_addr,
+                    local_port,
+                    lifetime,
+                    index - 1
+                );
+
+                // set new interval for the next new connection
+                interval = thread_rng().sample(Exp::new(arrival_rate).unwrap());
+                arrivals = SystemTime::now();
+            }
+
+            // Iterate through all sockets, update the state for each one
+            for (i, (h, s)) in sockets.iter_mut().enumerate() {
+                let socket = tcp::Socket::downcast_mut(s)
+                    .ok_or(WorkerError::Internal)?;
+
+                match dynamic_sockets.get(&h) {
+                    Some((timer, life)) => {
+                        // A dynamic connection, verify lifetime
+                        debug!("Dynamic socket {}", i);
+                        if timer.elapsed().unwrap().as_millis()
+                            > (life * 1000.0).round() as u128
+                        {
+                            info!("Close socket {}", i);
+                            socket.close();
+                            dynamic_sockets.remove(&h);
+                            close_sockets.push(h);
+                            continue;
+                        }
+                    }
+                    None => {
+                        // Static connection, continue
+                        debug!("Static socket {}", i);
+                    }
+                }
+
+                trace!("Process socket {}", i);
+                if socket.can_recv() {
+                    socket
+                        .recv(|data| {
+                            trace!(
+                                "{}",
+                                str::from_utf8(data)
+                                    .unwrap_or("(invalid utf8)")
+                            );
+                            (data.len(), ())
+                        })
+                        .unwrap();
+                }
+
+                if socket.may_send() {
+                    let response = format!("hello {}\n", i);
+                    let binary = response.as_bytes();
+                    trace!(
+                        "sending request from idx {} addr {}, data {:?}",
+                        i,
+                        socket.local_endpoint().unwrap().addr,
+                        binary
+                    );
+                    socket.send_slice(binary).expect("cannot send");
+                }
+            }
+
+            for h in close_sockets {
+                info!("Close handle {}", h);
+                // TODO: reuse sockets
+                sockets.remove(h);
+                total_conns = total_conns - 1;
+            }
+
+            info!("Sockets: {}", total_conns);
+
+            // Ideally we need to wait for iface.poll_delay(timestamp, &sockets)
+            // interval, but we may stuck without any activity making no
+            // progress. Since opening new connections and specifying their
+            // lifetime depends on constant timer check, wait for regular
+            // intervals.
+            phy_wait(fd, Some(smoltcp::time::Duration::from_millis(100)))
+                .expect("wait error");
+        }
+    }
+
+    /// Setup a tap device for communication, wrapped into a Tracer
+    /// and a FaultInjector.
+    fn setup_tap(
+        &self,
+        addr: Ipv4Address,
+    ) -> (Interface, FaultInjector<Tracer<TunTapInterface>>, i32) {
+        let tap = "tap0";
+        let device = TunTapInterface::new(&tap, Medium::Ethernet).unwrap();
+        let fd = device.as_raw_fd();
+
+        let seed = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .subsec_nanos();
+
+        let device = Tracer::new(device, |_timestamp, _printer| {
+            trace!("{}", _printer);
+        });
+
+        let mut device = FaultInjector::new(device, seed);
+
+        // Create interface
+        let mut config = match device.capabilities().medium {
+            Medium::Ethernet => Config::new(
+                EthernetAddress([0x02, 0x00, 0x00, 0x00, 0x00, 0x01]).into(),
+            ),
+            Medium::Ip => Config::new(smoltcp::wire::HardwareAddress::Ip),
+            Medium::Ieee802154 => todo!(),
+        };
+        config.random_seed = rand::random();
+
+        let mut iface = Interface::new(config, &mut device, Instant::now());
+        iface.set_any_ip(true);
+        iface.update_ip_addrs(|ip_addrs| {
+            ip_addrs
+                .push(IpCidr::new(IpAddress::Ipv4(addr), 16))
+                .unwrap();
+        });
+
+        iface.routes_mut().add_default_ipv4_route(addr).unwrap();
+
+        (iface, device, fd)
+    }
+
+    /// Map socket index to a local port and address. The address octets are
+    /// incremented every 100 sockets, whithin this interval the local port
+    /// is incremented.
+    fn get_local_addr_port(
+        &self,
+        addr: Ipv4Address,
+        index: usize,
+    ) -> (IpAddress, u16) {
+        // 254 (a2 octet) * 254 (a3 octet) * 100 (port)
+        // gives us maximum 6451600 connections that could be opened
+        let local_port = 49152 + (index % 100) as u16;
+        debug!("addr {}, index {}", addr, index);
+
+        let local_addr = IpAddress::v4(
+            addr.0[0],
+            addr.0[1],
+            (((index / 100) + 2) / 255) as u8,
+            (((index / 100) + 2) % 255) as u8,
+        );
+
+        return (local_addr, local_port);
+    }
+}
+
+impl Worker for NetworkWorker {
+    fn run_payload(&self) -> Result<(), WorkerError> {
+        info!("{self}");
+
+        let Workload::Network {
+            server,
+            address,
+            target_port,
+            arrival_rate,
+            departure_rate,
+            nconnections,
+        } = self.workload.workload
+        else {
+            unreachable!()
+        };
+
+        let ip_addr = Ipv4Address([address.0, address.1, address.2, address.3]);
+
+        if server {
+            let _ = self.start_server(ip_addr, target_port);
+        } else {
+            let _ = self.start_client(
+                ip_addr,
+                target_port,
+                nconnections,
+                arrival_rate,
+                departure_rate,
+            );
+        }
+
+        Ok(())
+    }
+}
+
+impl Display for NetworkWorker {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.config)
+    }
+}

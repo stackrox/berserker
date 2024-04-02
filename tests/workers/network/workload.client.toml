@@ -1,0 +1,12 @@
+restart_interval = 10
+
+[workload]
+type = "network"
+server = false
+address = [192, 168, 0, 1]
+target_port = 8081
+arrival_rate = 1000
+departure_rate = 1
+nconnections = 1
+per_core = false
+workers = 1
