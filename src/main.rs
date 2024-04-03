@@ -18,6 +18,7 @@ extern crate log;
 extern crate core_affinity;
 
 use config::Config;
+use core_affinity::CoreId;
 use fork::{fork, Fork};
 use itertools::iproduct;
 use nix::sys::wait::waitpid;
@@ -26,8 +27,6 @@ use nix::unistd::Pid;
 use berserker::{worker::new_worker, WorkloadConfig};
 
 fn main() {
-    // Retrieve the IDs of all active CPU cores.
-    let core_ids = core_affinity::get_core_ids().unwrap();
     let config = Config::builder()
         // Add in `./Settings.toml`
         .add_source(config::File::with_name("/etc/berserker/workload.toml").required(false))
@@ -49,8 +48,16 @@ fn main() {
 
     env_logger::init();
 
-    // Create processes for each active CPU core.
-    let handles: Vec<_> = iproduct!(core_ids.into_iter(), 0..9)
+    info!("Config: {:?}", config);
+
+    let core_ids: Vec<CoreId> = if config.per_core {
+        // Retrieve the IDs of all active CPU cores.
+        core_affinity::get_core_ids().unwrap()
+    } else {
+        vec![CoreId { id: 0 }]
+    };
+
+    let handles: Vec<_> = iproduct!(core_ids.into_iter(), 0..config.workers)
         .map(|(cpu, process)| {
             let worker = new_worker(config, cpu, process, &mut lower, &mut upper);
 
@@ -60,13 +67,13 @@ fn main() {
                     Some(child)
                 }
                 Ok(Fork::Child) => {
-                    if core_affinity::set_for_current(cpu) {
-                        loop {
-                            worker.run_payload().unwrap();
-                        }
+                    if config.per_core {
+                        core_affinity::set_for_current(cpu);
                     }
 
-                    None
+                    loop {
+                        worker.run_payload().unwrap();
+                    }
                 }
                 Err(e) => {
                     warn!("Failed: {e:?}");

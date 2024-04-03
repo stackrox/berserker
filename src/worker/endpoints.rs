@@ -27,6 +27,8 @@ impl EndpointWorker {
         let WorkloadConfig {
             restart_interval,
             workload: _,
+            per_core: _,
+            workers: _,
         } = workload;
 
         EndpointWorker {
