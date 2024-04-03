@@ -47,7 +47,8 @@ impl Worker for SyscallsWorker {
                 worker.do_syscall().unwrap();
             });
 
-            let interval: f64 = thread_rng().sample(Exp::new(arrival_rate).unwrap());
+            let interval: f64 =
+                thread_rng().sample(Exp::new(arrival_rate).unwrap());
             info!(
                 "{}-{}: Interval {}, rounded {}",
                 self.config.cpu.id,
@@ -56,7 +57,7 @@ impl Worker for SyscallsWorker {
                 (interval * 1000.0).round() as u64
             );
             thread::sleep(time::Duration::from_millis(
-                (interval * 1000.0).round() as u64
+                (interval * 1000.0).round() as u64,
             ));
             info!("{}-{}: Continue", self.config.cpu.id, self.config.process);
         }

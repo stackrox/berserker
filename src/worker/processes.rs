@@ -78,12 +78,16 @@ impl Worker for ProcessesWorker {
         };
 
         loop {
-            let lifetime: f64 = thread_rng().sample(Exp::new(departure_rate).unwrap());
+            let lifetime: f64 =
+                thread_rng().sample(Exp::new(departure_rate).unwrap());
 
             let worker = *self;
-            thread::spawn(move || worker.spawn_process((lifetime * 1000.0).round() as u64));
+            thread::spawn(move || {
+                worker.spawn_process((lifetime * 1000.0).round() as u64)
+            });
 
-            let interval: f64 = thread_rng().sample(Exp::new(arrival_rate).unwrap());
+            let interval: f64 =
+                thread_rng().sample(Exp::new(arrival_rate).unwrap());
             info!(
                 "{}-{}: Interval {}, rounded {}, lifetime {}, rounded {}",
                 self.config.cpu.id,
@@ -94,7 +98,7 @@ impl Worker for ProcessesWorker {
                 (lifetime * 1000.0).round() as u64
             );
             thread::sleep(time::Duration::from_millis(
-                (interval * 1000.0).round() as u64
+                (interval * 1000.0).round() as u64,
             ));
             info!("{}-{}: Continue", self.config.cpu.id, self.config.process);
         }

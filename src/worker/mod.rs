@@ -4,7 +4,10 @@ use rand_distr::{Uniform, Zipf};
 
 use crate::{Distribution, Worker, Workload, WorkloadConfig};
 
-use self::{endpoints::EndpointWorker, processes::ProcessesWorker, syscalls::SyscallsWorker};
+use self::{
+    endpoints::EndpointWorker, processes::ProcessesWorker,
+    syscalls::SyscallsWorker,
+};
 
 pub mod endpoints;
 pub mod processes;
@@ -18,18 +21,22 @@ pub fn new_worker(
     upper_bound: &mut usize,
 ) -> Box<dyn Worker> {
     match workload.workload {
-        Workload::Processes { .. } => Box::new(ProcessesWorker::new(workload, cpu, process)),
+        Workload::Processes { .. } => {
+            Box::new(ProcessesWorker::new(workload, cpu, process))
+        }
         Workload::Endpoints { distribution } => {
             match distribution {
                 Distribution::Zipfian { n_ports, exponent } => {
-                    let n_ports: f64 = thread_rng().sample(Zipf::new(n_ports, exponent).unwrap());
+                    let n_ports: f64 = thread_rng()
+                        .sample(Zipf::new(n_ports, exponent).unwrap());
 
                     *lower_bound = *upper_bound;
                     *upper_bound += n_ports as usize;
                 }
                 Distribution::Uniform { lower, upper } => {
                     // TODO: Double check this branch
-                    let n_ports = thread_rng().sample(Uniform::new(lower, upper));
+                    let n_ports =
+                        thread_rng().sample(Uniform::new(lower, upper));
 
                     *lower_bound = *upper_bound;
                     *upper_bound += n_ports as usize;
@@ -43,6 +50,8 @@ pub fn new_worker(
                 *upper_bound,
             ))
         }
-        Workload::Syscalls { .. } => Box::new(SyscallsWorker::new(workload, cpu, process)),
+        Workload::Syscalls { .. } => {
+            Box::new(SyscallsWorker::new(workload, cpu, process))
+        }
     }
 }
