@@ -23,17 +23,22 @@ use fork::{fork, Fork};
 use itertools::iproduct;
 use nix::sys::wait::waitpid;
 use nix::unistd::Pid;
+use std::env;
 
 use berserker::{worker::new_worker, WorkloadConfig};
 
 fn main() {
+    let args: Vec<String> = env::args().collect();
+    let default_config = String::from("workload.toml");
+    let config_path = &args.get(1).unwrap_or(&default_config);
+
     let config = Config::builder()
         // Add in `./Settings.toml`
         .add_source(
             config::File::with_name("/etc/berserker/workload.toml")
                 .required(false),
         )
-        .add_source(config::File::with_name("workload.toml").required(false))
+        .add_source(config::File::with_name(config_path).required(false))
         // Add in settings from the environment (with a prefix of APP)
         // Eg.. `WORKLOAD_DEBUG=1 ./target/app` would set the `debug` key
         .add_source(config::Environment::with_prefix("WORKLOAD"))
