@@ -35,6 +35,53 @@ impl NetworkWorker {
             workload: workload,
         }
     }
+
+    /// Start a simple server. The client side is going to be a networking
+    /// worker as well, so for convenience of troubleshooting do not error
+    /// out if something unexpected happened, log and proceed instead.
+    fn start_server(
+        &self,
+        addr: Ipv4Address,
+        target_port: u16,
+    ) -> Result<(), WorkerError> {
+        let listener =
+            TcpListener::bind((addr.to_string(), target_port)).unwrap();
+
+        for stream in listener.incoming() {
+            let mut stream = stream.unwrap();
+            loop {
+                let mut buf_reader = BufReader::new(&stream);
+                let mut buffer = String::new();
+
+                match buf_reader.read_line(&mut buffer) {
+                    Ok(0) => {
+                        // EOF, exit
+                        break;
+                    }
+                    Ok(_n) => {
+                        trace!("Received {:?}", buffer);
+
+                        let response = "hello\n";
+                        match stream.write_all(response.as_bytes()) {
+                            Ok(_) => {
+                                // Response is sent, handle the next one
+                                break;
+                            }
+                            Err(e) => {
+                                trace!("ERROR: sending response, {}", e);
+                                break;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        trace!("ERROR: reading a line, {}", e)
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl Worker for NetworkWorker {
@@ -52,6 +99,12 @@ impl Worker for NetworkWorker {
         else {
             unreachable!()
         };
+
+        let ip_addr = Ipv4Address([address.0, address.1, address.2, address.3]);
+
+        if server {
+            let _ = self.start_server(ip_addr, target_port);
+        }
 
         Ok(())
     }
