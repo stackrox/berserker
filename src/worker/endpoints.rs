@@ -29,6 +29,7 @@ impl EndpointWorker {
             workload: _,
             per_core: _,
             workers: _,
+            duration: _,
         } = workload;
 
         EndpointWorker {
