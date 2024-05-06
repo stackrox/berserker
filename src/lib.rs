@@ -93,7 +93,20 @@ pub enum Workload {
 
         /// Starting number of connections
         nconnections: u32,
+
+        /// How often send data via new connections, in milliseconds.
+        /// The interval is applied for all connections, e.g. an interval
+        /// of 100 ms for 100 connections means that every 100 ms one out
+        /// of 100 connections will be allowed to send some data.
+        /// This parameter allows to control the overhead of sending data,
+        /// so that it will not impact connections monitoring.
+        #[serde(default = "default_network_send_interval")]
+        send_interval: u128,
     },
+}
+
+fn default_network_send_interval() -> u128 {
+    100
 }
 
 /// Distribution for number of ports to listen on

@@ -44,6 +44,8 @@ impl NetworkWorker {
         addr: Ipv4Address,
         target_port: u16,
     ) -> Result<(), WorkerError> {
+        debug!("Starting server at {:?}:{:?}", addr, target_port);
+
         let listener =
             TcpListener::bind((addr.to_string(), target_port)).unwrap();
 
@@ -90,7 +92,10 @@ impl NetworkWorker {
         nconnections: u32,
         arrival_rate: f64,
         departure_rate: f64,
+        send_interval: u128,
     ) -> Result<(), WorkerError> {
+        debug!("Starting client at {:?}:{:?}", addr, target_port);
+
         let (mut iface, mut device, fd) = self.setup_tap(addr);
         let cx = iface.context();
 
@@ -120,6 +125,13 @@ impl NetworkWorker {
                 .unwrap();
         }
 
+        // Use global timer to throttle sending the data. It means there will
+        // be some irregularity about data sending betwen various connections,
+        // but to make it more precise we need to bookkeeping for every
+        // connection, which may waste memory and introduce unstability on its
+        // own.
+        let mut send_timer = SystemTime::now();
+
         // The main loop, where connection state will be updated, and dynamic
         // connections will be opened/closed
         loop {
@@ -132,7 +144,7 @@ impl NetworkWorker {
                 let socket = tcp::Socket::downcast_mut(s)
                     .ok_or(WorkerError::Internal)?;
 
-                trace!("Process socket {}", i);
+                info!("Process socket {}, {}", i, socket.state());
                 if socket.can_recv() {
                     socket
                         .recv(|data| {
@@ -147,15 +159,26 @@ impl NetworkWorker {
                 }
 
                 if socket.may_send() {
-                    let response = format!("hello {}\n", i);
-                    let binary = response.as_bytes();
-                    trace!(
-                        "sending request from idx {} addr {}, data {:?}",
-                        i,
-                        socket.local_endpoint().unwrap().addr,
-                        binary
-                    );
-                    socket.send_slice(binary).expect("cannot send");
+                    let elapsed = send_timer.elapsed().unwrap().as_millis();
+
+                    // Throttle sending data via connection, since the main
+                    // purpose is to excercise connection monitoring.
+                    // Sending data too frequently we risk producing too much
+                    // load and making connetion monitoring less reliable.
+                    if elapsed > send_interval {
+                        // reset the timer
+                        send_timer = SystemTime::now();
+
+                        let response = format!("hello {}\n", i);
+                        let binary = response.as_bytes();
+                        trace!(
+                            "sending request from idx {} addr {}, data {:?}",
+                            i,
+                            socket.local_endpoint().unwrap().addr,
+                            binary
+                        );
+                        socket.send_slice(binary).expect("cannot send");
+                    }
                 }
             }
 
@@ -248,6 +271,7 @@ impl Worker for NetworkWorker {
             arrival_rate,
             departure_rate,
             nconnections,
+            send_interval,
         } = self.workload.workload
         else {
             unreachable!()
@@ -264,6 +288,7 @@ impl Worker for NetworkWorker {
                 nconnections,
                 arrival_rate,
                 departure_rate,
+                send_interval,
             );
         }
 
