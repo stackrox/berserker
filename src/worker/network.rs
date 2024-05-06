@@ -96,7 +96,7 @@ impl NetworkWorker {
     ) -> Result<(), WorkerError> {
         debug!("Starting client at {:?}:{:?}", addr, target_port);
 
-        let (mut iface, mut device, fd) = self.setup_tap(addr);
+        let (mut iface, mut device, fd) = self.setup_tuntap(addr);
         let cx = iface.context();
 
         // Open static set of connections, that are going to live throughout
@@ -192,14 +192,14 @@ impl NetworkWorker {
         }
     }
 
-    /// Setup a tap device for communication, wrapped into a Tracer
+    /// Setup a tun device for communication, wrapped into a Tracer
     /// and a FaultInjector.
-    fn setup_tap(
+    fn setup_tuntap(
         &self,
         addr: Ipv4Address,
     ) -> (Interface, FaultInjector<Tracer<TunTapInterface>>, i32) {
-        let tap = "tap0";
-        let device = TunTapInterface::new(&tap, Medium::Ethernet).unwrap();
+        let device_name = "tun0";
+        let device = TunTapInterface::new(&device_name, Medium::Ip).unwrap();
         let fd = device.as_raw_fd();
 
         let seed = SystemTime::now()
