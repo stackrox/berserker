@@ -21,9 +21,11 @@ use config::Config;
 use core_affinity::CoreId;
 use fork::{fork, Fork};
 use itertools::iproduct;
+use nix::sys::signal::{kill, Signal};
 use nix::sys::wait::waitpid;
 use nix::unistd::Pid;
-use std::env;
+use std::time::SystemTime;
+use std::{env, thread, time};
 
 use berserker::{worker::new_worker, WorkloadConfig};
 
@@ -31,6 +33,7 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     let default_config = String::from("workload.toml");
     let config_path = &args.get(1).unwrap_or(&default_config);
+    let duration_timer = SystemTime::now();
 
     let config = Config::builder()
         // Add in `./Settings.toml`
@@ -94,8 +97,38 @@ fn main() {
 
     info!("In total: {}", upper);
 
-    for handle in handles.into_iter().flatten() {
-        info!("waitpid: {}", handle);
-        waitpid(Pid::from_raw(handle), None).unwrap();
-    }
+    let processes = &handles.clone();
+
+    thread::scope(|s| {
+        if config.duration != 0 {
+            // Spin a watcher thread
+            s.spawn(move || loop {
+                thread::sleep(time::Duration::from_secs(1));
+                let elapsed = duration_timer.elapsed().unwrap().as_secs();
+
+                if elapsed > config.duration {
+                    for handle in processes.into_iter().flatten() {
+                        info!("Terminating: {}", *handle);
+                        match kill(Pid::from_raw(*handle), Signal::SIGTERM) {
+                            Ok(()) => {
+                                continue;
+                            }
+                            Err(e) => {
+                                continue;
+                            }
+                        }
+                    }
+
+                    break;
+                }
+            });
+        }
+
+        s.spawn(move || {
+            for handle in processes.into_iter().flatten() {
+                info!("waitpid: {}", *handle);
+                waitpid(Pid::from_raw(*handle), None).unwrap();
+            }
+        });
+    });
 }

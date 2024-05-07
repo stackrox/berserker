@@ -24,6 +24,10 @@ pub struct WorkloadConfig {
 
     /// Custom workload configuration.
     pub workload: Workload,
+
+    /// For how long to run the worker. Default value is zero, meaning no limit.
+    #[serde(default = "default_duration")]
+    pub duration: u64,
 }
 
 fn default_workers() -> usize {
@@ -32,6 +36,10 @@ fn default_workers() -> usize {
 
 fn default_per_core() -> bool {
     true
+}
+
+fn default_duration() -> u64 {
+    0
 }
 
 /// Workload specific configuration, contains one enum value for each
