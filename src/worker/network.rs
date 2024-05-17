@@ -89,11 +89,20 @@ impl NetworkWorker {
         &self,
         addr: Ipv4Address,
         target_port: u16,
-        nconnections: u32,
-        arrival_rate: f64,
-        departure_rate: f64,
-        send_interval: u128,
     ) -> Result<(), WorkerError> {
+        let Workload::Network {
+            server: _,
+            address: _,
+            target_port: _,
+            arrival_rate: _,
+            departure_rate: _,
+            nconnections,
+            send_interval,
+        } = self.workload.workload
+        else {
+            unreachable!()
+        };
+
         debug!("Starting client at {:?}:{:?}", addr, target_port);
 
         let (mut iface, mut device, fd) = self.setup_tuntap(addr);
@@ -137,7 +146,6 @@ impl NetworkWorker {
         loop {
             let timestamp = Instant::now();
             iface.poll(timestamp, &mut device, &mut sockets);
-            let cx = iface.context();
 
             // Iterate through all sockets, update the state for each one
             for (i, (h, s)) in sockets.iter_mut().enumerate() {
@@ -182,13 +190,15 @@ impl NetworkWorker {
                 }
             }
 
-            // Ideally we need to wait for iface.poll_delay(timestamp, &sockets)
-            // interval, but we may stuck without any activity making no
-            // progress. Since opening new connections and specifying their
-            // lifetime depends on constant timer check, wait for regular
-            // intervals.
-            phy_wait(fd, Some(smoltcp::time::Duration::from_millis(100)))
-                .expect("wait error");
+            // We cant wait only for iface.poll_delay(timestamp, &sockets)
+            // interval, since the loop could stuck without any activity
+            // making no progress. To prevent that specify a minimum waiting
+            // duration of 10 milliseconds.
+            let duration = iface
+                .poll_delay(timestamp, &sockets)
+                .min(Some(smoltcp::time::Duration::from_millis(100)));
+
+            phy_wait(fd, duration).expect("wait error");
         }
     }
 
@@ -207,8 +217,8 @@ impl NetworkWorker {
             .unwrap()
             .subsec_nanos();
 
-        let device = Tracer::new(device, |_timestamp, _printer| {
-            trace!("{}", _printer);
+        let device = Tracer::new(device, |_timestamp, printer| {
+            trace!("{}", printer);
         });
 
         let mut device = FaultInjector::new(device, seed);
@@ -268,10 +278,10 @@ impl Worker for NetworkWorker {
             server,
             address,
             target_port,
-            arrival_rate,
-            departure_rate,
-            nconnections,
-            send_interval,
+            arrival_rate: _,
+            departure_rate: _,
+            nconnections: _,
+            send_interval: _,
         } = self.workload.workload
         else {
             unreachable!()
@@ -282,14 +292,7 @@ impl Worker for NetworkWorker {
         if server {
             let _ = self.start_server(ip_addr, target_port);
         } else {
-            let _ = self.start_client(
-                ip_addr,
-                target_port,
-                nconnections,
-                arrival_rate,
-                departure_rate,
-                send_interval,
-            );
+            let _ = self.start_client(ip_addr, target_port);
         }
 
         Ok(())
