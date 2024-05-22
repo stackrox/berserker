@@ -193,7 +193,7 @@ impl NetworkWorker {
             // We cant wait only for iface.poll_delay(timestamp, &sockets)
             // interval, since the loop could stuck without any activity
             // making no progress. To prevent that specify a minimum waiting
-            // duration of 10 milliseconds.
+            // duration of 100 milliseconds.
             let duration = iface
                 .poll_delay(timestamp, &sockets)
                 .min(Some(smoltcp::time::Duration::from_millis(100)));
