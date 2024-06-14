@@ -10,6 +10,7 @@ use std::{
     fmt::Display,
     io::{prelude::*, BufReader},
     net::TcpListener,
+    thread,
 };
 
 use crate::{BaseConfig, Worker, WorkerError, Workload, WorkloadConfig};
@@ -49,7 +50,16 @@ impl NetworkWorker {
 
         for stream in listener.incoming() {
             let mut stream = stream.unwrap();
-            loop {
+
+            // As a simplest solution to keep a connection open, spawn a
+            // thread.  It's not the best one though, as we waste resources.
+            // For the purpose of only keeping connections open we could e.g.
+            // spawn only two threads, where the first one receives connections
+            // add add streams into the list of active, and the second iterates
+            // through streams and replies. This way the connections will have
+            // large latency, but for the purpose of networking workload it
+            // doesn't matter.
+            thread::spawn(move || loop {
                 let mut buf_reader = BufReader::new(&stream);
                 let mut buffer = String::new();
 
@@ -65,7 +75,6 @@ impl NetworkWorker {
                         match stream.write_all(response.as_bytes()) {
                             Ok(_) => {
                                 // Response is sent, handle the next one
-                                break;
                             }
                             Err(e) => {
                                 trace!("ERROR: sending response, {}", e);
@@ -77,7 +86,7 @@ impl NetworkWorker {
                         trace!("ERROR: reading a line, {}", e)
                     }
                 }
-            }
+            });
         }
 
         Ok(())
