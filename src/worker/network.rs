@@ -32,7 +32,7 @@ impl NetworkWorker {
     pub fn new(workload: WorkloadConfig, cpu: CoreId, process: usize) -> Self {
         NetworkWorker {
             config: BaseConfig { cpu, process },
-            workload: workload,
+            workload,
         }
     }
 
@@ -94,8 +94,8 @@ impl NetworkWorker {
             server: _,
             address: _,
             target_port: _,
-            arrival_rate: arrival_rate,
-            departure_rate: departure_rate,
+            arrival_rate,
+            departure_rate,
             nconnections,
             send_interval,
         } = self.workload.workload
@@ -106,7 +106,6 @@ impl NetworkWorker {
         debug!("Starting client at {:?}:{:?}", addr, target_port);
 
         let (mut iface, mut device, fd) = self.setup_tuntap(addr);
-        let cx = iface.context();
 
         // Dynamic sockets are going to be responsible for connections that
         // will be opened/closed during the test. Every record contains:
@@ -137,7 +136,11 @@ impl NetworkWorker {
                 self.get_local_addr_port(addr, index);
             info!("connecting from {}:{}", local_addr, local_port);
             socket
-                .connect(cx, (addr, target_port), (local_addr, local_port))
+                .connect(
+                    iface.context(),
+                    (addr, target_port),
+                    (local_addr, local_port),
+                )
                 .unwrap();
         }
 
@@ -169,7 +172,7 @@ impl NetworkWorker {
             if elapsed > (interval * 1000.0).round() as u128 {
                 // Time for a new connection, add a socket, it state is going
                 // to be updated during the next loop round
-                total_conns = total_conns + 1;
+                total_conns += 1;
 
                 let tcp_rx_buffer = tcp::SocketBuffer::new(vec![0; 1024]);
                 let tcp_tx_buffer = tcp::SocketBuffer::new(vec![0; 1024]);
@@ -180,7 +183,11 @@ impl NetworkWorker {
                     self.get_local_addr_port(addr, index);
 
                 socket
-                    .connect(cx, (addr, target_port), (local_addr, local_port))
+                    .connect(
+                        iface.context(),
+                        (addr, target_port),
+                        (local_addr, local_port),
+                    )
                     .unwrap();
 
                 let handle = sockets.add(socket);
@@ -269,7 +276,7 @@ impl NetworkWorker {
                 info!("Close handle {}", h);
                 // TODO: reuse sockets
                 sockets.remove(h);
-                total_conns = total_conns - 1;
+                total_conns -= 1;
             }
 
             info!("Sockets: {}", total_conns);
@@ -293,7 +300,7 @@ impl NetworkWorker {
         addr: Ipv4Address,
     ) -> (Interface, FaultInjector<Tracer<TunTapInterface>>, i32) {
         let device_name = "tun0";
-        let device = TunTapInterface::new(&device_name, Medium::Ip).unwrap();
+        let device = TunTapInterface::new(device_name, Medium::Ip).unwrap();
         let fd = device.as_raw_fd();
 
         let seed = SystemTime::now()
@@ -350,7 +357,7 @@ impl NetworkWorker {
             (((index / 100) + 2) % 255) as u8,
         );
 
-        return (local_addr, local_port);
+        (local_addr, local_port)
     }
 }
 
