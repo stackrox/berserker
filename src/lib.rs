@@ -1,6 +1,7 @@
 use core_affinity::CoreId;
 use serde::Deserialize;
 use std::fmt::Display;
+use syscalls::{Sysno};
 
 pub mod worker;
 
@@ -34,6 +35,18 @@ fn default_per_core() -> bool {
     true
 }
 
+fn default_syscalls_arrival_rate() -> f64 {
+    0.0
+}
+
+fn default_syscalls_tight_loop() -> bool {
+    false
+}
+
+fn default_syscalls_syscall_nr() -> u32 {
+    Sysno::getpid as u32
+}
+
 /// Workload specific configuration, contains one enum value for each
 /// workload type.
 #[derive(Debug, Copy, Clone, Deserialize)]
@@ -61,7 +74,16 @@ pub enum Workload {
     /// How to invoke syscalls
     Syscalls {
         /// How often to invoke a syscall.
+        #[serde(default = "default_syscalls_arrival_rate")]
         arrival_rate: f64,
+
+        /// Run in a tight loop
+        #[serde(default = "default_syscalls_tight_loop")]
+        tight_loop: bool,
+
+        /// Which syscall to trigger
+        #[serde(default = "default_syscalls_syscall_nr")]
+        syscall_nr: u32,
     },
 
     /// How to open network connections

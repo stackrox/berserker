@@ -1,4 +1,5 @@
 use std::{fmt::Display, thread, time};
+use std::time::{Instant, Duration};
 
 use core_affinity::CoreId;
 use log::{info, warn};
@@ -22,11 +23,11 @@ impl SyscallsWorker {
         }
     }
 
-    fn do_syscall(&self) -> std::io::Result<()> {
-        match unsafe { syscall!(Sysno::getpid) } {
+    fn do_syscall(&self, syscall: Sysno) -> std::io::Result<()> {
+        match unsafe { syscall!(syscall) } {
             Ok(_) => Ok(()),
             Err(err) => {
-                warn!("Syscall failed: {}", err);
+                info!("Syscall failed: {}", err);
                 Ok(())
             }
         }
@@ -37,16 +38,41 @@ impl Worker for SyscallsWorker {
     fn run_payload(&self) -> Result<(), WorkerError> {
         info!("{self}");
 
-        let Workload::Syscalls { arrival_rate } = self.workload.workload else {
+        let mut counter = 0;
+        let mut start = Instant::now();
+
+        let Workload::Syscalls {
+            arrival_rate,
+            tight_loop,
+            syscall_nr,
+        } = self.workload.workload else {
             unreachable!()
         };
 
+        let syscall = Sysno::from(syscall_nr);
+        info!("Running syscall {syscall}");
+
         loop {
             let worker = *self;
-            thread::spawn(move || {
-                worker.do_syscall().unwrap();
-            });
 
+            if start.elapsed().as_secs() > 10 {
+                warn!("CPU {}, {}",
+                      self.config.cpu.id, counter / start.elapsed().as_secs());
+                start = Instant::now();
+                counter = 0;
+            }
+
+            counter += 1;
+            // Do the syscall directly, without spawning a thread (it would
+            // introduce too much overhead for a quick syscall).
+            worker.do_syscall(syscall).unwrap();
+
+            // If running in a tight loop, go to the next iteration
+            if tight_loop {
+                continue;
+            }
+
+            // Otherwise calculate waiting time
             let interval: f64 =
                 thread_rng().sample(Exp::new(arrival_rate).unwrap());
             info!(
