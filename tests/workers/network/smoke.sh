@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -eou pipefail
 
 stop() { echo "$*" 1>&2 ; exit 1; }
 
