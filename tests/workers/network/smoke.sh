@@ -5,6 +5,7 @@ stop() { echo "$*" 1>&2 ; exit 1; }
 
 which bpftrace &>/dev/null || stop "Don't have bpftrace"
 which bpftool &>/dev/null || stop "Don't have bpftool"
+which berserker &>/dev/null || stop "Don't have berserker"
 
 if [ ! -d "tests/workers/network/" ]; then
   echo "Can't find test directory. Smoke tests have to be run from the project root directory"
@@ -14,14 +15,24 @@ echo "Cleanup..."
 rm -f /tmp/server.log
 rm -f /tmp/client.log
 rm -f /tmp/tcpaccept.log
+# in case if it's still running from a previous run
+pkill berserker || true
 
 echo "Starting bpftrace..."
 bpftrace tests/workers/network/sys_accept.bt &> /tmp/tcpaccept.log &
 export BPFTRACE_PID=$!
 
 # let bpftrace attach probes
+attempts=0
+
 while ! bpftool prog | grep -q bpftrace ;
 do
+    if [[ "$attempts" -gt 20 ]]; then
+       echo "Can't find bpftool after ${attempts} attempts."
+       exit 1
+    fi;
+
+    attempts=$((attempts+1))
     echo "Wait for bpftrace";
     sleep 0.5;
 done
@@ -38,13 +49,13 @@ export CLIENT_PID=$!
 sleep 5;
 
 echo "Stopping..."
-pkill -P "${CLIENT_PID}"
-pkill -P "${SERVER_PID}"
-pkill -P "${BPFTRACE_PID}"
+kill "${CLIENT_PID}" || { echo 'Can't stop the client ; exit 1; }
+kill "${SERVER_PID}" || { echo 'Can't stop the server ; exit 1; }
+kill "${BPFTRACE_PID}" || { echo 'Can't stop the bpftrace ; exit 1; }
 
 echo "Verifying the results..."
 ENDPOINTS=$(cat /tmp/tcpaccept.log |\
-                grep berserker |\
+                grep hit |\
                 awk '{print $4 " " $5}' |\
                 sort | uniq -c | wc -l)
 

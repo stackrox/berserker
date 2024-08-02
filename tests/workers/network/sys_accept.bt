@@ -1,4 +1,4 @@
 k:__sys_accept* /comm == "berserker"/
 {
-    printf("accept\n");
+    printf("hit\n");
 }
