@@ -6,7 +6,7 @@
 #   * Optionally prepare iptables for the device to be visible
 #
 # The last step is optional, because iptables configuration could be different
-# between development environments. Meaning it's not guaranteed this part of
+# between development environments. Meaning it's not guaranteed that this part of
 # the script is suitable for every case.
 
 stop() { echo "$*" 1>&2 ; exit 1; }
