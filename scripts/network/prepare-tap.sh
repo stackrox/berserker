@@ -18,7 +18,7 @@ which sysctl &>/dev/null || stop "Don't have the sysctl tool"
 
 ADDRESS="192.168.0.1/16"
 NAME="tun0"
-USER="`whoami`"
+USER="$(whoami)"
 CONFIGURE_IPTABLE="false"
 CONFIGURE_TUNTAP_IF_EXISTS="false"
 
