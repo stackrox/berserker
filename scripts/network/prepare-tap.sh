@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # This script helps to prepare an environment for developing berserker network
-# workload. There are following preparation steps:
+# workload. It has the following preparatory steps:
 #   * Create and start up a new tun device for berserker to use
 #   * Optionally prepare iptables for the device to be visible
 #
