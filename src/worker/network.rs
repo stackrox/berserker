@@ -55,7 +55,7 @@ impl NetworkWorker {
             // thread.  It's not the best one though, as we waste resources.
             // For the purpose of only keeping connections open we could e.g.
             // spawn only two threads, where the first one receives connections
-            // add add streams into the list of active, and the second iterates
+            // and adds streams into the list of active, and the second iterates
             // through streams and replies. This way the connections will have
             // large latency, but for the purpose of networking workload it
             // doesn't matter.
