@@ -22,7 +22,7 @@ USER="`whoami`"
 CONFIGURE_IPTABLE="false"
 CONFIGURE_TUNTAP_IF_EXISTS="false"
 
-while getopts ":a:t:uio" opt; do
+while getopts ":a:t:u:io" opt; do
   case $opt in
     a) ADDRESS="${OPTARG}"
     ;;
