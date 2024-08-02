@@ -57,7 +57,7 @@ impl NetworkWorker {
             // spawn only two threads, where the first one receives connections
             // and adds streams into the list of active, and the second iterates
             // through streams and replies. This way the connections will have
-            // large latency, but for the purpose of networking workload it
+            // high latency, but for the purpose of networking workload it
             // doesn't matter.
             thread::spawn(move || loop {
                 let mut buf_reader = BufReader::new(&stream);
