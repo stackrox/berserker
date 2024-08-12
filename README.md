@@ -26,7 +26,7 @@ workloads:
   Poisson process.
 
 * Network based workload to simulate systems with large number of open
-  connections. To reduce amount of resources neede for such simulation, a tun
+  connections. To reduce amount of resources needed for such simulation, a tun
   device is used to craft an external client connection in the userspace.
 
 Every workload is executed via set of worker processes, that are distributed
