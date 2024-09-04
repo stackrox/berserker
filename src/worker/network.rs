@@ -33,7 +33,7 @@ impl NetworkWorker {
     pub fn new(workload: WorkloadConfig, cpu: CoreId, process: usize) -> Self {
         NetworkWorker {
             config: BaseConfig { cpu, process },
-            workload: workload,
+            workload,
         }
     }
 
@@ -103,8 +103,8 @@ impl NetworkWorker {
             server: _,
             address: _,
             target_port: _,
-            arrival_rate: _,
-            departure_rate: _,
+            arrival_rate,
+            departure_rate,
             nconnections,
             send_interval,
         } = self.workload.workload
@@ -115,7 +115,13 @@ impl NetworkWorker {
         debug!("Starting client at {:?}:{:?}", addr, target_port);
 
         let (mut iface, mut device, fd) = self.setup_tuntap(addr);
-        let cx = iface.context();
+
+        // Dynamic sockets are going to be responsible for connections that
+        // will be opened/closed during the test. Every record contains:
+        // * socket handle (just an index inside smoltcp)
+        // * time when the connection was opened
+        // * connection lifetime
+        let mut dynamic_sockets = HashMap::new();
 
         // Open static set of connections, that are going to live throughout
         // the whole run
@@ -139,7 +145,11 @@ impl NetworkWorker {
                 self.get_local_addr_port(addr, index);
             info!("connecting from {}:{}", local_addr, local_port);
             socket
-                .connect(cx, (addr, target_port), (local_addr, local_port))
+                .connect(
+                    iface.context(),
+                    (addr, target_port),
+                    (local_addr, local_port),
+                )
                 .unwrap();
         }
 
@@ -150,11 +160,63 @@ impl NetworkWorker {
         // own.
         let mut send_timer = SystemTime::now();
 
+        // Timer and waiting interval for the next new dynamic connection
+        let mut arrivals = SystemTime::now();
+        let mut interval: f64 =
+            thread_rng().sample(Exp::new(arrival_rate).unwrap());
+
+        // Current number of opened connections, both dynamic and static
+        let mut total_conns = nconnections;
+
         // The main loop, where connection state will be updated, and dynamic
         // connections will be opened/closed
         loop {
+            // Vector of sockets to close at the end of each loop
+            let mut close_sockets = vec![];
+
             let timestamp = Instant::now();
             iface.poll(timestamp, &mut device, &mut sockets);
+
+            let elapsed = arrivals.elapsed().unwrap().as_millis();
+            if elapsed > (interval * 1000.0).round() as u128 {
+                // Time for a new connection, add a socket, it state is going
+                // to be updated during the next loop round
+                total_conns += 1;
+
+                let tcp_rx_buffer = tcp::SocketBuffer::new(vec![0; 1024]);
+                let tcp_tx_buffer = tcp::SocketBuffer::new(vec![0; 1024]);
+                let mut socket = tcp::Socket::new(tcp_rx_buffer, tcp_tx_buffer);
+
+                let index = total_conns as usize;
+                let (local_addr, local_port) =
+                    self.get_local_addr_port(addr, index);
+
+                socket
+                    .connect(
+                        iface.context(),
+                        (addr, target_port),
+                        (local_addr, local_port),
+                    )
+                    .unwrap();
+
+                let handle = sockets.add(socket);
+                let lifetime: f64 =
+                    thread_rng().sample(Exp::new(departure_rate).unwrap());
+
+                dynamic_sockets.insert(handle, (SystemTime::now(), lifetime));
+
+                info!(
+                    "New connecting from {}:{}, lifetime {}, index {}",
+                    local_addr,
+                    local_port,
+                    lifetime,
+                    index - 1
+                );
+
+                // set new interval for the next new connection
+                interval = thread_rng().sample(Exp::new(arrival_rate).unwrap());
+                arrivals = SystemTime::now();
+            }
 
             // Iterate through all sockets, update the state for each one
             for (i, (h, s)) in sockets.iter_mut().enumerate() {
@@ -162,6 +224,26 @@ impl NetworkWorker {
                     .ok_or(WorkerError::Internal)?;
 
                 info!("Process socket {}, {}", i, socket.state());
+                match dynamic_sockets.get(&h) {
+                    Some((timer, life)) => {
+                        // A dynamic connection, verify lifetime
+                        debug!("Dynamic socket {}", i);
+                        if timer.elapsed().unwrap().as_millis()
+                            > (life * 1000.0).round() as u128
+                        {
+                            info!("Close socket {}", i);
+                            socket.close();
+                            dynamic_sockets.remove(&h);
+                            close_sockets.push(h);
+                            continue;
+                        }
+                    }
+                    None => {
+                        // Static connection, continue
+                        debug!("Static socket {}", i);
+                    }
+                }
+
                 if socket.can_recv() {
                     socket
                         .recv(|data| {
@@ -199,6 +281,15 @@ impl NetworkWorker {
                 }
             }
 
+            for h in close_sockets {
+                info!("Close handle {}", h);
+                // TODO: reuse sockets
+                sockets.remove(h);
+                total_conns -= 1;
+            }
+
+            info!("Sockets: {}", total_conns);
+
             // We cant wait only for iface.poll_delay(timestamp, &sockets)
             // interval, since the loop could stuck without any activity
             // making no progress. To prevent that specify a minimum waiting
@@ -218,7 +309,7 @@ impl NetworkWorker {
         addr: Ipv4Address,
     ) -> (Interface, FaultInjector<Tracer<TunTapInterface>>, i32) {
         let device_name = "tun0";
-        let device = TunTapInterface::new(&device_name, Medium::Ip).unwrap();
+        let device = TunTapInterface::new(device_name, Medium::Ip).unwrap();
         let fd = device.as_raw_fd();
 
         let seed = SystemTime::now()
@@ -275,7 +366,7 @@ impl NetworkWorker {
             (((index / 100) + 2) % 255) as u8,
         );
 
-        return (local_addr, local_port);
+        (local_addr, local_port)
     }
 }
 

@@ -37,7 +37,7 @@ jobs:
       - name: Get tag
         run: |
           TAG="$(make tag)"
-          echo "TAG=$TAG" >> $GITHUB_ENV 
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
 
       - name: Retag and push stackrox-io
         uses: stackrox/actions/images/retag-and-push@v1
