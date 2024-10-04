@@ -1,8 +1,5 @@
 use core_affinity::CoreId;
 use log::{debug, info, trace};
-use rand::{thread_rng, Rng};
-use rand_distr::Exp;
-use std::collections::HashMap;
 use std::os::unix::io::AsRawFd;
 use std::str;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -13,7 +10,7 @@ use std::{
     thread,
 };
 
-use crate::{BaseConfig, Worker, WorkerError, Workload, WorkloadConfig};
+use crate::{BaseConfig, WorkerError, Workload, WorkloadConfig};
 
 use smoltcp::iface::{Config, Interface, SocketSet};
 use smoltcp::phy::{
@@ -33,7 +30,7 @@ impl NetworkWorker {
     pub fn new(workload: WorkloadConfig, cpu: CoreId, process: usize) -> Self {
         NetworkWorker {
             config: BaseConfig { cpu, process },
-            workload: workload,
+            workload,
         }
     }
 
@@ -157,7 +154,7 @@ impl NetworkWorker {
             iface.poll(timestamp, &mut device, &mut sockets);
 
             // Iterate through all sockets, update the state for each one
-            for (i, (h, s)) in sockets.iter_mut().enumerate() {
+            for (i, (_, s)) in sockets.iter_mut().enumerate() {
                 let socket = tcp::Socket::downcast_mut(s)
                     .ok_or(WorkerError::Internal)?;
 
@@ -218,7 +215,7 @@ impl NetworkWorker {
         addr: Ipv4Address,
     ) -> (Interface, FaultInjector<Tracer<TunTapInterface>>, i32) {
         let device_name = "tun0";
-        let device = TunTapInterface::new(&device_name, Medium::Ip).unwrap();
+        let device = TunTapInterface::new(device_name, Medium::Ip).unwrap();
         let fd = device.as_raw_fd();
 
         let seed = SystemTime::now()
@@ -275,12 +272,10 @@ impl NetworkWorker {
             (((index / 100) + 2) % 255) as u8,
         );
 
-        return (local_addr, local_port);
+        (local_addr, local_port)
     }
-}
 
-impl Worker for NetworkWorker {
-    fn run_payload(&self) -> Result<(), WorkerError> {
+    pub fn run_payload(&self) -> Result<(), WorkerError> {
         info!("{self}");
 
         let Workload::Network {

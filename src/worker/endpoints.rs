@@ -3,7 +3,7 @@ use std::{fmt::Display, net::TcpListener, thread, time};
 use core_affinity::CoreId;
 use log::info;
 
-use crate::{BaseConfig, Worker, WorkerError, WorkloadConfig};
+use crate::{BaseConfig, WorkerError, WorkloadConfig};
 
 struct EndpointWorkload {
     restart_interval: u64,
@@ -41,10 +41,8 @@ impl EndpointWorker {
             },
         }
     }
-}
 
-impl Worker for EndpointWorker {
-    fn run_payload(&self) -> Result<(), WorkerError> {
+    pub fn run_payload(&self) -> Result<(), WorkerError> {
         info!("{self}");
 
         let EndpointWorkload {

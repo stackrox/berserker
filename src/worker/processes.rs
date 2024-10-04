@@ -7,7 +7,7 @@ use nix::{sys::wait::waitpid, unistd::Pid};
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use rand_distr::Exp;
 
-use crate::{BaseConfig, Worker, WorkerError, Workload, WorkloadConfig};
+use crate::{BaseConfig, WorkerError, Workload, WorkloadConfig};
 
 #[derive(Debug, Clone, Copy)]
 pub struct ProcessesWorker {
@@ -62,10 +62,8 @@ impl ProcessesWorker {
             }
         }
     }
-}
 
-impl Worker for ProcessesWorker {
-    fn run_payload(&self) -> Result<(), WorkerError> {
+    pub fn run_payload(&self) -> Result<(), WorkerError> {
         info!("{self}");
 
         let Workload::Processes {
