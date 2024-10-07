@@ -44,7 +44,10 @@ impl Worker {
             Workload::Processes(processes) => {
                 Worker::Process(ProcessesWorker::new(processes, cpu, process))
             }
-            Workload::Endpoints(Endpoints { distribution }) => {
+            Workload::Endpoints(Endpoints {
+                restart_interval,
+                distribution,
+            }) => {
                 let n_ports: u16 = match distribution {
                     Distribution::Zipfian { n_ports, exponent } => thread_rng()
                         .sample(Zipf::new(n_ports, exponent).unwrap())
@@ -55,7 +58,11 @@ impl Worker {
                 };
 
                 Worker::Endpoint(EndpointWorker::new(
-                    workload, cpu, process, start_port, n_ports,
+                    cpu,
+                    process,
+                    restart_interval,
+                    start_port,
+                    n_ports,
                 ))
             }
             Workload::Syscalls(syscalls) => {

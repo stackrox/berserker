@@ -6,9 +6,6 @@ use serde::Deserialize;
 /// workloads plus workload specific data.
 #[derive(Debug, Clone, Deserialize)]
 pub struct WorkloadConfig {
-    /// An amount of time for workload payload to run before restarting.
-    pub restart_interval: u64,
-
     /// Controls per-core mode to handle number of workers. If per-core mode
     /// is enabled, `workers` will be treated as a number of workers per CPU
     /// core. Otherwise it will be treated as a total number of workers.
@@ -60,6 +57,9 @@ pub enum Workload {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Endpoints {
+    /// An amount of time for the workload to run before restarting
+    pub restart_interval: u64,
+
     /// Governing the number of ports open.
     #[serde(flatten)]
     pub distribution: Distribution,
@@ -152,8 +152,6 @@ mod tests {
     #[test]
     fn test_processes() {
         let input = r#"
-            restart_interval = 10
-
             [workload]
             type = "processes"
             arrival_rate = 10.0
@@ -168,12 +166,7 @@ mod tests {
             .try_deserialize::<WorkloadConfig>()
             .expect("failed to deserialize into WorkloadConfig");
 
-        let WorkloadConfig {
-            restart_interval,
-            workload,
-            ..
-        } = config;
-        assert_eq!(restart_interval, 10);
+        let WorkloadConfig { workload, .. } = config;
         if let Workload::Processes(Processes {
             arrival_rate,
             departure_rate,
@@ -192,10 +185,9 @@ mod tests {
     #[test]
     fn test_endpoints_zipf() {
         let input = r#"
-            restart_interval = 10
-
             [workload]
             type = "endpoints"
+            restart_interval = 10
             distribution = "zipf"
             n_ports = 200
             exponent = 1.4
@@ -208,14 +200,15 @@ mod tests {
             .try_deserialize::<WorkloadConfig>()
             .expect("failed to deserialize into WorkloadConfig");
 
-        let WorkloadConfig {
-            restart_interval,
-            workload,
-            ..
-        } = config;
-        assert_eq!(restart_interval, 10);
+        let WorkloadConfig { workload, .. } = config;
 
-        if let Workload::Endpoints(Endpoints { distribution, .. }) = workload {
+        if let Workload::Endpoints(Endpoints {
+            restart_interval,
+            distribution,
+        }) = workload
+        {
+            assert_eq!(restart_interval, 10);
+
             if let Distribution::Zipfian { n_ports, exponent } = distribution {
                 assert_eq!(n_ports, 200);
                 assert_eq!(exponent, 1.4);
@@ -230,10 +223,9 @@ mod tests {
     #[test]
     fn test_endpoints_uniform() {
         let input = r#"
-            restart_interval = 10
-
             [workload]
             type = "endpoints"
+            restart_interval = 10
             distribution = "uniform"
             upper = 100
             lower = 1
@@ -246,14 +238,14 @@ mod tests {
             .try_deserialize::<WorkloadConfig>()
             .expect("failed to deserialize into WorkloadConfig");
 
-        let WorkloadConfig {
-            restart_interval,
-            workload,
-            ..
-        } = config;
-        assert_eq!(restart_interval, 10);
+        let WorkloadConfig { workload, .. } = config;
 
-        if let Workload::Endpoints(Endpoints { distribution, .. }) = workload {
+        if let Workload::Endpoints(Endpoints {
+            restart_interval,
+            distribution,
+        }) = workload
+        {
+            assert_eq!(restart_interval, 10);
             if let Distribution::Uniform { lower, upper } = distribution {
                 assert_eq!(lower, 1);
                 assert_eq!(upper, 100);
@@ -268,8 +260,6 @@ mod tests {
     #[test]
     fn test_syscalls() {
         let input = r#"
-            restart_interval = 10
-
             [workload]
             type = "syscalls"
             arrival_rate = 10.0
@@ -282,12 +272,7 @@ mod tests {
             .try_deserialize::<WorkloadConfig>()
             .expect("failed to deserialize into WorkloadConfig");
 
-        let WorkloadConfig {
-            restart_interval,
-            workload,
-            ..
-        } = config;
-        assert_eq!(restart_interval, 10);
+        let WorkloadConfig { workload, .. } = config;
         if let Workload::Syscalls(Syscalls { arrival_rate, .. }) = workload {
             assert_eq!(arrival_rate, 10.0);
         } else {
