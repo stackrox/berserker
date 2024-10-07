@@ -1,15 +1,30 @@
-use std::{fmt::Display, net::TcpListener, thread, time};
+use std::{fmt::Display, net::TcpListener, ops::Range, thread, time};
 
 use core_affinity::CoreId;
 use log::info;
 
 use crate::{BaseConfig, WorkerError, WorkloadConfig};
 
+struct PortRange {
+    start: u16,
+    length: u16,
+}
+
+impl PortRange {
+    fn new(start: u16, length: u16) -> Self {
+        PortRange { start, length }
+    }
+
+    fn get_range(&self) -> Range<u16> {
+        let end = self.start + self.length;
+        self.start..end
+    }
+}
+
 pub struct EndpointWorker {
     config: BaseConfig,
     restart_interval: u64,
-    lower: usize,
-    upper: usize,
+    ports: PortRange,
 }
 
 impl EndpointWorker {
@@ -17,8 +32,8 @@ impl EndpointWorker {
         workload: WorkloadConfig,
         cpu: CoreId,
         process: usize,
-        lower: usize,
-        upper: usize,
+        lower: u16,
+        upper: u16,
     ) -> Self {
         let WorkloadConfig {
             restart_interval,
@@ -28,11 +43,12 @@ impl EndpointWorker {
             duration: _,
         } = workload;
 
+        let ports = PortRange::new(lower, upper - lower);
+
         EndpointWorker {
             config: BaseConfig { cpu, process },
             restart_interval,
-            lower,
-            upper,
+            ports,
         }
     }
 
@@ -41,7 +57,9 @@ impl EndpointWorker {
 
         // Copy the u64 to prevent moving self into the thread.
         let restart_interval = self.restart_interval;
-        let listeners: Vec<_> = (self.lower..self.upper)
+        let listeners: Vec<_> = self
+            .ports
+            .get_range()
             .map(|port| thread::spawn(move || listen(port, restart_interval)))
             .collect();
 
@@ -51,6 +69,10 @@ impl EndpointWorker {
 
         Ok(())
     }
+
+    pub fn size(&self) -> u16 {
+        self.ports.length
+    }
 }
 
 impl Display for EndpointWorker {
@@ -59,7 +81,7 @@ impl Display for EndpointWorker {
     }
 }
 
-fn listen(port: usize, sleep: u64) -> std::io::Result<()> {
+fn listen(port: u16, sleep: u64) -> std::io::Result<()> {
     let addr = format!("0.0.0.0:{port}");
     let listener = TcpListener::bind(addr)?;
 

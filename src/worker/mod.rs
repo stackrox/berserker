@@ -38,31 +38,24 @@ impl Worker {
         workload: WorkloadConfig,
         cpu: CoreId,
         process: usize,
-        lower_bound: &mut usize,
-        upper_bound: &mut usize,
+        start_port: u16,
     ) -> Worker {
         match workload.workload {
             Workload::Processes(processes) => {
                 Worker::Process(ProcessesWorker::new(processes, cpu, process))
             }
             Workload::Endpoints(Endpoints { distribution }) => {
-                let n_ports: usize = match distribution {
+                let n_ports: u16 = match distribution {
                     Distribution::Zipfian { n_ports, exponent } => thread_rng()
                         .sample(Zipf::new(n_ports, exponent).unwrap())
-                        as usize,
+                        as u16,
                     Distribution::Uniform { lower, upper } => {
-                        thread_rng().sample(Uniform::new(lower, upper)) as usize
+                        thread_rng().sample(Uniform::new(lower, upper)) as u16
                     }
                 };
 
-                *lower_bound = *upper_bound;
-                *upper_bound += n_ports as usize;
                 Worker::Endpoint(EndpointWorker::new(
-                    workload,
-                    cpu,
-                    process,
-                    *lower_bound,
-                    *upper_bound,
+                    workload, cpu, process, start_port, n_ports,
                 ))
             }
             Workload::Syscalls(syscalls) => {

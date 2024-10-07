@@ -44,8 +44,8 @@ impl Display for BaseConfig {
 
 pub fn run(config: WorkloadConfig) {
     let duration_timer = std::time::SystemTime::now();
-    let mut lower = 1024;
-    let mut upper = 1024;
+    let mut start_port = 1024;
+    let mut total_ports = 0;
 
     let core_ids: Vec<CoreId> = if config.per_core {
         // Retrieve the IDs of all active CPU cores.
@@ -56,13 +56,12 @@ pub fn run(config: WorkloadConfig) {
 
     let handles: Vec<_> = iproduct!(core_ids.into_iter(), 0..config.workers)
         .map(|(cpu, process)| {
-            let worker = Worker::new(
-                config.clone(),
-                cpu,
-                process,
-                &mut lower,
-                &mut upper,
-            );
+            let worker = Worker::new(config.clone(), cpu, process, start_port);
+
+            if let Worker::Endpoint(w) = &worker {
+                start_port += w.size();
+                total_ports += w.size();
+            }
 
             match fork() {
                 Ok(Fork::Parent(child)) => {
@@ -86,7 +85,9 @@ pub fn run(config: WorkloadConfig) {
         })
         .collect();
 
-    info!("In total: {}", upper);
+    if total_ports != 0 {
+        info!("In total: {total_ports}");
+    }
 
     let processes = &handles.clone();
 
