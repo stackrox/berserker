@@ -19,7 +19,7 @@ extern crate core_affinity;
 
 use config::Config;
 
-use berserker::WorkloadConfig;
+use berserker::workload::WorkloadConfig;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();

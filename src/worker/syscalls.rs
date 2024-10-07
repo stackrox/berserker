@@ -6,19 +6,23 @@ use rand::{thread_rng, Rng};
 use rand_distr::Exp;
 use syscalls::{syscall, Sysno};
 
-use crate::{BaseConfig, WorkerError, Workload, WorkloadConfig};
+use crate::{workload, BaseConfig, WorkerError};
 
 #[derive(Debug, Copy, Clone)]
 pub struct SyscallsWorker {
     config: BaseConfig,
-    workload: WorkloadConfig,
+    arrival_rate: f64,
 }
 
 impl SyscallsWorker {
-    pub fn new(workload: WorkloadConfig, cpu: CoreId, process: usize) -> Self {
+    pub fn new(
+        workload: workload::Syscalls,
+        cpu: CoreId,
+        process: usize,
+    ) -> Self {
         SyscallsWorker {
             config: BaseConfig { cpu, process },
-            workload,
+            arrival_rate: workload.arrival_rate,
         }
     }
 
@@ -35,10 +39,6 @@ impl SyscallsWorker {
     pub fn run_payload(&self) -> Result<(), WorkerError> {
         info!("{self}");
 
-        let Workload::Syscalls { arrival_rate } = self.workload.workload else {
-            unreachable!()
-        };
-
         loop {
             let worker = *self;
             thread::spawn(move || {
@@ -46,7 +46,7 @@ impl SyscallsWorker {
             });
 
             let interval: f64 =
-                thread_rng().sample(Exp::new(arrival_rate).unwrap());
+                thread_rng().sample(Exp::new(self.arrival_rate).unwrap());
             info!(
                 "{}-{}: Interval {}, rounded {}",
                 self.config.cpu.id,

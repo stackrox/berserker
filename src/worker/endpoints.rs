@@ -5,15 +5,11 @@ use log::info;
 
 use crate::{BaseConfig, WorkerError, WorkloadConfig};
 
-struct EndpointWorkload {
+pub struct EndpointWorker {
+    config: BaseConfig,
     restart_interval: u64,
     lower: usize,
     upper: usize,
-}
-
-pub struct EndpointWorker {
-    config: BaseConfig,
-    workload: EndpointWorkload,
 }
 
 impl EndpointWorker {
@@ -34,24 +30,18 @@ impl EndpointWorker {
 
         EndpointWorker {
             config: BaseConfig { cpu, process },
-            workload: EndpointWorkload {
-                restart_interval,
-                lower,
-                upper,
-            },
+            restart_interval,
+            lower,
+            upper,
         }
     }
 
     pub fn run_payload(&self) -> Result<(), WorkerError> {
         info!("{self}");
 
-        let EndpointWorkload {
-            restart_interval,
-            lower,
-            upper,
-        } = self.workload;
-
-        let listeners: Vec<_> = (lower..upper)
+        // Copy the u64 to prevent moving self into the thread.
+        let restart_interval = self.restart_interval;
+        let listeners: Vec<_> = (self.lower..self.upper)
             .map(|port| thread::spawn(move || listen(port, restart_interval)))
             .collect();
 

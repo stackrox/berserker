@@ -10,7 +10,7 @@ use std::{
     thread,
 };
 
-use crate::{BaseConfig, WorkerError, Workload, WorkloadConfig};
+use crate::{workload, BaseConfig, WorkerError};
 
 use smoltcp::iface::{Config, Interface, SocketSet};
 use smoltcp::phy::{
@@ -23,14 +23,36 @@ use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
 
 pub struct NetworkWorker {
     config: BaseConfig,
-    workload: WorkloadConfig,
+    server: bool,
+    address: (u8, u8, u8, u8),
+    target_port: u16,
+    nconnections: u32,
+    send_interval: u128,
 }
 
 impl NetworkWorker {
-    pub fn new(workload: WorkloadConfig, cpu: CoreId, process: usize) -> Self {
+    pub fn new(
+        workload: workload::Network,
+        cpu: CoreId,
+        process: usize,
+    ) -> Self {
+        let workload::Network {
+            server,
+            address,
+            target_port,
+            arrival_rate: _,
+            departure_rate: _,
+            nconnections,
+            send_interval,
+        } = workload;
+
         NetworkWorker {
             config: BaseConfig { cpu, process },
-            workload,
+            server,
+            address,
+            target_port,
+            nconnections,
+            send_interval,
         }
     }
 
@@ -96,19 +118,6 @@ impl NetworkWorker {
         addr: Ipv4Address,
         target_port: u16,
     ) -> Result<(), WorkerError> {
-        let Workload::Network {
-            server: _,
-            address: _,
-            target_port: _,
-            arrival_rate: _,
-            departure_rate: _,
-            nconnections,
-            send_interval,
-        } = self.workload.workload
-        else {
-            unreachable!()
-        };
-
         debug!("Starting client at {:?}:{:?}", addr, target_port);
 
         let (mut iface, mut device, fd) = self.setup_tuntap(addr);
@@ -118,7 +127,7 @@ impl NetworkWorker {
         // the whole run
         let mut sockets = SocketSet::new(vec![]);
 
-        for _i in 0..nconnections {
+        for _i in 0..self.nconnections {
             let tcp_rx_buffer = tcp::SocketBuffer::new(vec![0; 1024]);
             let tcp_tx_buffer = tcp::SocketBuffer::new(vec![0; 1024]);
             let tcp_socket = tcp::Socket::new(tcp_rx_buffer, tcp_tx_buffer);
@@ -179,7 +188,7 @@ impl NetworkWorker {
                     // purpose is to excercise connection monitoring.
                     // Sending data too frequently we risk producing too much
                     // load and making connetion monitoring less reliable.
-                    if elapsed > send_interval {
+                    if elapsed > self.send_interval {
                         // reset the timer
                         send_timer = SystemTime::now();
 
@@ -278,25 +287,13 @@ impl NetworkWorker {
     pub fn run_payload(&self) -> Result<(), WorkerError> {
         info!("{self}");
 
-        let Workload::Network {
-            server,
-            address,
-            target_port,
-            arrival_rate: _,
-            departure_rate: _,
-            nconnections: _,
-            send_interval: _,
-        } = self.workload.workload
-        else {
-            unreachable!()
-        };
-
+        let address = self.address;
         let ip_addr = Ipv4Address([address.0, address.1, address.2, address.3]);
 
-        if server {
-            let _ = self.start_server(ip_addr, target_port);
+        if self.server {
+            let _ = self.start_server(ip_addr, self.target_port);
         } else {
-            let _ = self.start_client(ip_addr, target_port);
+            let _ = self.start_client(ip_addr, self.target_port);
         }
 
         Ok(())

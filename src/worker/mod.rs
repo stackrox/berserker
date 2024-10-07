@@ -2,7 +2,10 @@ use core_affinity::CoreId;
 use rand::{thread_rng, Rng};
 use rand_distr::{Uniform, Zipf};
 
-use crate::{Distribution, WorkerError, Workload, WorkloadConfig};
+use crate::{
+    workload::{Distribution, Endpoints, Workload},
+    WorkerError, WorkloadConfig,
+};
 
 use self::{
     endpoints::EndpointWorker, network::NetworkWorker,
@@ -39,10 +42,10 @@ impl Worker {
         upper_bound: &mut usize,
     ) -> Worker {
         match workload.workload {
-            Workload::Processes { .. } => {
-                Worker::Process(ProcessesWorker::new(workload, cpu, process))
+            Workload::Processes(processes) => {
+                Worker::Process(ProcessesWorker::new(processes, cpu, process))
             }
-            Workload::Endpoints { distribution } => {
+            Workload::Endpoints(Endpoints { distribution }) => {
                 let n_ports: usize = match distribution {
                     Distribution::Zipfian { n_ports, exponent } => thread_rng()
                         .sample(Zipf::new(n_ports, exponent).unwrap())
@@ -62,11 +65,11 @@ impl Worker {
                     *upper_bound,
                 ))
             }
-            Workload::Syscalls { .. } => {
-                Worker::Syscalls(SyscallsWorker::new(workload, cpu, process))
+            Workload::Syscalls(syscalls) => {
+                Worker::Syscalls(SyscallsWorker::new(syscalls, cpu, process))
             }
-            Workload::Network { .. } => {
-                Worker::Network(NetworkWorker::new(workload, cpu, process))
+            Workload::Network(network) => {
+                Worker::Network(NetworkWorker::new(network, cpu, process))
             }
         }
     }
