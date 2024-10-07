@@ -1,4 +1,3 @@
-use core_affinity::CoreId;
 use log::{debug, info, trace};
 use std::os::unix::io::AsRawFd;
 use std::str;
@@ -31,11 +30,7 @@ pub struct NetworkWorker {
 }
 
 impl NetworkWorker {
-    pub fn new(
-        workload: workload::Network,
-        cpu: CoreId,
-        process: usize,
-    ) -> Self {
+    pub fn new(workload: workload::Network, config: BaseConfig) -> Self {
         let workload::Network {
             server,
             address,
@@ -49,7 +44,7 @@ impl NetworkWorker {
         let address = Ipv4Address([address.0, address.1, address.2, address.3]);
 
         NetworkWorker {
-            config: BaseConfig { cpu, process },
+            config,
             server,
             address,
             target_port,

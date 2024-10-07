@@ -31,7 +31,7 @@ impl Display for WorkerError {
 /// General information for each worker, on which CPU is it running
 /// and what is the process number.
 #[derive(Debug, Copy, Clone)]
-struct BaseConfig {
+pub struct BaseConfig {
     cpu: CoreId,
     process: usize,
 }
@@ -42,21 +42,22 @@ impl Display for BaseConfig {
     }
 }
 
-pub fn run(config: WorkloadConfig) {
+pub fn run(workload: WorkloadConfig) {
     let duration_timer = std::time::SystemTime::now();
     let mut start_port = 1024;
     let mut total_ports = 0;
 
-    let core_ids: Vec<CoreId> = if config.per_core {
+    let core_ids: Vec<CoreId> = if workload.per_core {
         // Retrieve the IDs of all active CPU cores.
         core_affinity::get_core_ids().unwrap()
     } else {
         vec![CoreId { id: 0 }]
     };
 
-    let handles: Vec<_> = iproduct!(core_ids.into_iter(), 0..config.workers)
+    let handles: Vec<_> = iproduct!(core_ids.into_iter(), 0..workload.workers)
         .map(|(cpu, process)| {
-            let worker = Worker::new(config.clone(), cpu, process, start_port);
+            let config = BaseConfig { cpu, process };
+            let worker = Worker::new(workload.clone(), config, start_port);
 
             if let Worker::Endpoint(w) = &worker {
                 start_port += w.size();
@@ -69,7 +70,7 @@ pub fn run(config: WorkloadConfig) {
                     Some(child)
                 }
                 Ok(Fork::Child) => {
-                    if config.per_core {
+                    if workload.per_core {
                         core_affinity::set_for_current(cpu);
                     }
 
@@ -92,7 +93,7 @@ pub fn run(config: WorkloadConfig) {
     let handles = Arc::new(handles);
 
     thread::scope(|s| {
-        if config.duration != 0 {
+        if workload.duration != 0 {
             // Cloning the Arc so we can hand it over to the watcher thread
             let handles = handles.clone();
 
@@ -101,7 +102,7 @@ pub fn run(config: WorkloadConfig) {
                 thread::sleep(std::time::Duration::from_secs(1));
                 let elapsed = duration_timer.elapsed().unwrap().as_secs();
 
-                if elapsed > config.duration {
+                if elapsed > workload.duration {
                     for handle in handles.iter().flatten() {
                         info!("Terminating: {}", *handle);
                         match kill(Pid::from_raw(*handle), Signal::SIGTERM) {

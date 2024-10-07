@@ -1,6 +1,5 @@
 use std::{fmt::Display, process::Command, thread, time};
 
-use core_affinity::CoreId;
 use fork::{fork, Fork};
 use log::{info, warn};
 use nix::{sys::wait::waitpid, unistd::Pid};
@@ -16,15 +15,8 @@ pub struct ProcessesWorker {
 }
 
 impl ProcessesWorker {
-    pub fn new(
-        workload: workload::Processes,
-        cpu: CoreId,
-        process: usize,
-    ) -> Self {
-        ProcessesWorker {
-            config: BaseConfig { cpu, process },
-            workload,
-        }
+    pub fn new(workload: workload::Processes, config: BaseConfig) -> Self {
+        ProcessesWorker { config, workload }
     }
 
     fn spawn_process(&self, lifetime: u64) -> Result<(), WorkerError> {

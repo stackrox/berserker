@@ -1,6 +1,5 @@
 use std::{fmt::Display, net::TcpListener, ops::Range, thread, time};
 
-use core_affinity::CoreId;
 use log::info;
 
 use crate::{BaseConfig, WorkerError};
@@ -29,8 +28,7 @@ pub struct EndpointWorker {
 
 impl EndpointWorker {
     pub fn new(
-        cpu: CoreId,
-        process: usize,
+        config: BaseConfig,
         restart_interval: u64,
         start_port: u16,
         n_ports: u16,
@@ -38,7 +36,7 @@ impl EndpointWorker {
         let ports = PortRange::new(start_port, n_ports);
 
         EndpointWorker {
-            config: BaseConfig { cpu, process },
+            config,
             restart_interval,
             ports,
         }

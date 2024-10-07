@@ -1,10 +1,9 @@
-use core_affinity::CoreId;
 use rand::{thread_rng, Rng};
 use rand_distr::{Uniform, Zipf};
 
 use crate::{
     workload::{Distribution, Endpoints, Workload},
-    WorkerError, WorkloadConfig,
+    BaseConfig, WorkerError, WorkloadConfig,
 };
 
 use self::{
@@ -36,13 +35,12 @@ impl Worker {
 
     pub fn new(
         workload: WorkloadConfig,
-        cpu: CoreId,
-        process: usize,
+        base_config: BaseConfig,
         start_port: u16,
     ) -> Worker {
         match workload.workload {
             Workload::Processes(processes) => {
-                Worker::Process(ProcessesWorker::new(processes, cpu, process))
+                Worker::Process(ProcessesWorker::new(processes, base_config))
             }
             Workload::Endpoints(Endpoints {
                 restart_interval,
@@ -58,18 +56,17 @@ impl Worker {
                 };
 
                 Worker::Endpoint(EndpointWorker::new(
-                    cpu,
-                    process,
+                    base_config,
                     restart_interval,
                     start_port,
                     n_ports,
                 ))
             }
             Workload::Syscalls(syscalls) => {
-                Worker::Syscalls(SyscallsWorker::new(syscalls, cpu, process))
+                Worker::Syscalls(SyscallsWorker::new(syscalls, base_config))
             }
             Workload::Network(network) => {
-                Worker::Network(NetworkWorker::new(network, cpu, process))
+                Worker::Network(NetworkWorker::new(network, base_config))
             }
         }
     }

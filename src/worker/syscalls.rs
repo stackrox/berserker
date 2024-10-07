@@ -1,6 +1,5 @@
 use std::{fmt::Display, thread, time};
 
-use core_affinity::CoreId;
 use log::{info, warn};
 use rand::{thread_rng, Rng};
 use rand_distr::Exp;
@@ -15,13 +14,9 @@ pub struct SyscallsWorker {
 }
 
 impl SyscallsWorker {
-    pub fn new(
-        workload: workload::Syscalls,
-        cpu: CoreId,
-        process: usize,
-    ) -> Self {
+    pub fn new(workload: workload::Syscalls, config: BaseConfig) -> Self {
         SyscallsWorker {
-            config: BaseConfig { cpu, process },
+            config,
             arrival_rate: workload.arrival_rate,
         }
     }
