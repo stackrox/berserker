@@ -2,7 +2,10 @@ use rand::{thread_rng, Rng};
 use rand_distr::{Uniform, Zipf};
 
 use crate::{
-    workload::{Distribution, Endpoints, Workload},
+    workload::{
+        endpoints::{Distribution, Endpoints},
+        Workload,
+    },
     BaseConfig, WorkerError, WorkloadConfig,
 };
 

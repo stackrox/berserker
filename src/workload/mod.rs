@@ -1,6 +1,9 @@
-use std::fmt::Display;
-
 use serde::Deserialize;
+
+use self::{endpoints::Endpoints, network::Network};
+
+pub(crate) mod endpoints;
+pub(crate) mod network;
 
 /// Main workload configuration, contains general bits for all types of
 /// workloads plus workload specific data.
@@ -56,41 +59,6 @@ pub enum Workload {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct Endpoints {
-    /// An amount of time for the workload to run before restarting
-    pub restart_interval: u64,
-
-    /// Governing the number of ports open.
-    #[serde(flatten)]
-    pub distribution: Distribution,
-}
-
-impl Display for Endpoints {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Using {} distribution", self.distribution)
-    }
-}
-
-/// Distribution for number of ports to listen on
-#[derive(Debug, Copy, Clone, Deserialize)]
-#[serde(tag = "distribution")]
-pub enum Distribution {
-    /// Few processes are opening large number of ports, the rest are only few.
-    #[serde(alias = "zipf")]
-    Zipfian { n_ports: u64, exponent: f64 },
-
-    /// Every process opens more or less the same number of ports.
-    #[serde(alias = "uniform")]
-    Uniform { lower: u64, upper: u64 },
-}
-
-impl Display for Distribution {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{self:?}")
-    }
-}
-
-#[derive(Debug, Clone, Deserialize)]
 pub struct Processes {
     /// How often a new process will be spawn.
     pub arrival_rate: f64,
@@ -106,36 +74,6 @@ pub struct Processes {
 pub struct Syscalls {
     /// How often to invoke a syscall.
     pub arrival_rate: f64,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct Network {
-    /// Whether the instance functions as a server or client
-    pub server: bool,
-
-    /// Which ip address to use for the server to listen on,
-    /// or for the client to connect to
-    pub address: (u8, u8, u8, u8),
-
-    /// Port for the server to listen on, or for the client
-    /// to connect to.
-    pub target_port: u16,
-
-    /// Starting number of connections
-    pub nconnections: u32,
-
-    /// How often send data via new connections, in milliseconds.
-    /// The interval is applied for all connections, e.g. an interval
-    /// of 100 ms for 100 connections means that every 100 ms one out
-    /// of 100 connections will be allowed to send some data.
-    /// This parameter allows to control the overhead of sending data,
-    /// so that it will not impact connections monitoring.
-    #[serde(default = "default_network_send_interval")]
-    pub send_interval: u128,
-}
-
-fn default_network_send_interval() -> u128 {
-    10
 }
 
 #[cfg(test)]
@@ -203,7 +141,9 @@ mod tests {
         {
             assert_eq!(restart_interval, 10);
 
-            if let Distribution::Zipfian { n_ports, exponent } = distribution {
+            if let endpoints::Distribution::Zipfian { n_ports, exponent } =
+                distribution
+            {
                 assert_eq!(n_ports, 200);
                 assert_eq!(exponent, 1.4);
             } else {
@@ -240,7 +180,9 @@ mod tests {
         }) = workload
         {
             assert_eq!(restart_interval, 10);
-            if let Distribution::Uniform { lower, upper } = distribution {
+            if let endpoints::Distribution::Uniform { lower, upper } =
+                distribution
+            {
                 assert_eq!(lower, 1);
                 assert_eq!(upper, 100);
             } else {

@@ -9,7 +9,8 @@ use std::{
     thread,
 };
 
-use crate::{workload, BaseConfig, WorkerError};
+use crate::workload::network::Network;
+use crate::{BaseConfig, WorkerError};
 
 use smoltcp::iface::{Config, Interface, SocketSet};
 use smoltcp::phy::{
@@ -30,8 +31,8 @@ pub struct NetworkWorker {
 }
 
 impl NetworkWorker {
-    pub fn new(workload: workload::Network, config: BaseConfig) -> Self {
-        let workload::Network {
+    pub fn new(workload: Network, config: BaseConfig) -> Self {
+        let Network {
             server,
             address,
             target_port,
