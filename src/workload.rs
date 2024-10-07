@@ -121,12 +121,6 @@ pub struct Network {
     /// to connect to.
     pub target_port: u16,
 
-    /// Rate of opening new connections
-    pub arrival_rate: f64,
-
-    /// Rate of closing connections
-    pub departure_rate: f64,
-
     /// Starting number of connections
     pub nconnections: u32,
 

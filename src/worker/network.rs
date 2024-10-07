@@ -35,8 +35,6 @@ impl NetworkWorker {
             server,
             address,
             target_port,
-            arrival_rate: _,
-            departure_rate: _,
             nconnections,
             send_interval,
         } = workload;
