@@ -32,10 +32,10 @@ impl EndpointWorker {
         cpu: CoreId,
         process: usize,
         restart_interval: u64,
-        lower: u16,
-        upper: u16,
+        start_port: u16,
+        n_ports: u16,
     ) -> Self {
-        let ports = PortRange::new(lower, upper - lower);
+        let ports = PortRange::new(start_port, n_ports);
 
         EndpointWorker {
             config: BaseConfig { cpu, process },
