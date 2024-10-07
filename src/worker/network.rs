@@ -1,8 +1,4 @@
-use core_affinity::CoreId;
 use log::{debug, info, trace};
-use rand::{thread_rng, Rng};
-use rand_distr::Exp;
-use std::collections::HashMap;
 use std::os::unix::io::AsRawFd;
 use std::str;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -13,7 +9,8 @@ use std::{
     thread,
 };
 
-use crate::{BaseConfig, Worker, WorkerError, Workload, WorkloadConfig};
+use crate::workload::network::Network;
+use crate::{BaseConfig, WorkerError};
 
 use smoltcp::iface::{Config, Interface, SocketSet};
 use smoltcp::phy::{
@@ -26,29 +23,47 @@ use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
 
 pub struct NetworkWorker {
     config: BaseConfig,
-    workload: WorkloadConfig,
+    server: bool,
+    address: Ipv4Address,
+    target_port: u16,
+    nconnections: u32,
+    send_interval: u128,
 }
 
 impl NetworkWorker {
-    pub fn new(workload: WorkloadConfig, cpu: CoreId, process: usize) -> Self {
+    pub fn new(workload: Network, config: BaseConfig) -> Self {
+        let Network {
+            server,
+            address,
+            target_port,
+            nconnections,
+            send_interval,
+        } = workload;
+
+        let address = Ipv4Address([address.0, address.1, address.2, address.3]);
+
         NetworkWorker {
-            config: BaseConfig { cpu, process },
-            workload: workload,
+            config,
+            server,
+            address,
+            target_port,
+            nconnections,
+            send_interval,
         }
     }
 
     /// Start a simple server. The client side is going to be a networking
     /// worker as well, so for convenience of troubleshooting do not error
     /// out if something unexpected happened, log and proceed instead.
-    fn start_server(
-        &self,
-        addr: Ipv4Address,
-        target_port: u16,
-    ) -> Result<(), WorkerError> {
-        debug!("Starting server at {:?}:{:?}", addr, target_port);
+    fn start_server(&self) -> Result<(), WorkerError> {
+        debug!(
+            "Starting server at {:?}:{:?}",
+            self.address, self.target_port
+        );
 
         let listener =
-            TcpListener::bind((addr.to_string(), target_port)).unwrap();
+            TcpListener::bind((self.address.to_string(), self.target_port))
+                .unwrap();
 
         for stream in listener.incoming() {
             let mut stream = stream.unwrap();
@@ -94,34 +109,20 @@ impl NetworkWorker {
         Ok(())
     }
 
-    fn start_client(
-        &self,
-        addr: Ipv4Address,
-        target_port: u16,
-    ) -> Result<(), WorkerError> {
-        let Workload::Network {
-            server: _,
-            address: _,
-            target_port: _,
-            arrival_rate: _,
-            departure_rate: _,
-            nconnections,
-            send_interval,
-        } = self.workload.workload
-        else {
-            unreachable!()
-        };
+    fn start_client(&self) -> Result<(), WorkerError> {
+        debug!(
+            "Starting client at {:?}:{:?}",
+            self.address, self.target_port
+        );
 
-        debug!("Starting client at {:?}:{:?}", addr, target_port);
-
-        let (mut iface, mut device, fd) = self.setup_tuntap(addr);
+        let (mut iface, mut device, fd) = self.setup_tuntap(self.address);
         let cx = iface.context();
 
         // Open static set of connections, that are going to live throughout
         // the whole run
         let mut sockets = SocketSet::new(vec![]);
 
-        for _i in 0..nconnections {
+        for _i in 0..self.nconnections {
             let tcp_rx_buffer = tcp::SocketBuffer::new(vec![0; 1024]);
             let tcp_tx_buffer = tcp::SocketBuffer::new(vec![0; 1024]);
             let tcp_socket = tcp::Socket::new(tcp_rx_buffer, tcp_tx_buffer);
@@ -136,10 +137,14 @@ impl NetworkWorker {
         {
             let index = i;
             let (local_addr, local_port) =
-                self.get_local_addr_port(addr, index);
+                self.get_local_addr_port(self.address, index);
             info!("connecting from {}:{}", local_addr, local_port);
             socket
-                .connect(cx, (addr, target_port), (local_addr, local_port))
+                .connect(
+                    cx,
+                    (self.address, self.target_port),
+                    (local_addr, local_port),
+                )
                 .unwrap();
         }
 
@@ -157,7 +162,7 @@ impl NetworkWorker {
             iface.poll(timestamp, &mut device, &mut sockets);
 
             // Iterate through all sockets, update the state for each one
-            for (i, (h, s)) in sockets.iter_mut().enumerate() {
+            for (i, (_, s)) in sockets.iter_mut().enumerate() {
                 let socket = tcp::Socket::downcast_mut(s)
                     .ok_or(WorkerError::Internal)?;
 
@@ -182,7 +187,7 @@ impl NetworkWorker {
                     // purpose is to excercise connection monitoring.
                     // Sending data too frequently we risk producing too much
                     // load and making connetion monitoring less reliable.
-                    if elapsed > send_interval {
+                    if elapsed > self.send_interval {
                         // reset the timer
                         send_timer = SystemTime::now();
 
@@ -218,7 +223,7 @@ impl NetworkWorker {
         addr: Ipv4Address,
     ) -> (Interface, FaultInjector<Tracer<TunTapInterface>>, i32) {
         let device_name = "tun0";
-        let device = TunTapInterface::new(&device_name, Medium::Ip).unwrap();
+        let device = TunTapInterface::new(device_name, Medium::Ip).unwrap();
         let fd = device.as_raw_fd();
 
         let seed = SystemTime::now()
@@ -275,33 +280,16 @@ impl NetworkWorker {
             (((index / 100) + 2) % 255) as u8,
         );
 
-        return (local_addr, local_port);
+        (local_addr, local_port)
     }
-}
 
-impl Worker for NetworkWorker {
-    fn run_payload(&self) -> Result<(), WorkerError> {
+    pub fn run_payload(&self) -> Result<(), WorkerError> {
         info!("{self}");
 
-        let Workload::Network {
-            server,
-            address,
-            target_port,
-            arrival_rate: _,
-            departure_rate: _,
-            nconnections: _,
-            send_interval: _,
-        } = self.workload.workload
-        else {
-            unreachable!()
-        };
-
-        let ip_addr = Ipv4Address([address.0, address.1, address.2, address.3]);
-
-        if server {
-            let _ = self.start_server(ip_addr, target_port);
+        if self.server {
+            let _ = self.start_server();
         } else {
-            let _ = self.start_client(ip_addr, target_port);
+            let _ = self.start_client();
         }
 
         Ok(())

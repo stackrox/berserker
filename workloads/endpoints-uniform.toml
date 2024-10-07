@@ -1,7 +1,6 @@
-restart_interval = 10
-
 [workload]
 type = "endpoints"
+restart_interval = 10
 distribution = "uniform"
 upper = 100
 lower = 1

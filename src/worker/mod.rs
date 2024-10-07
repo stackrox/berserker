@@ -1,8 +1,13 @@
-use core_affinity::CoreId;
 use rand::{thread_rng, Rng};
 use rand_distr::{Uniform, Zipf};
 
-use crate::{Distribution, Worker, Workload, WorkloadConfig};
+use crate::{
+    workload::{
+        endpoints::{Distribution, Endpoints},
+        Workload,
+    },
+    BaseConfig, WorkerError, WorkloadConfig,
+};
 
 use self::{
     endpoints::EndpointWorker, network::NetworkWorker,
@@ -14,48 +19,58 @@ pub mod network;
 pub mod processes;
 pub mod syscalls;
 
-pub fn new_worker(
-    workload: WorkloadConfig,
-    cpu: CoreId,
-    process: usize,
-    lower_bound: &mut usize,
-    upper_bound: &mut usize,
-) -> Box<dyn Worker> {
-    match workload.workload {
-        Workload::Processes { .. } => {
-            Box::new(ProcessesWorker::new(workload, cpu, process))
+pub enum Worker {
+    Endpoint(EndpointWorker),
+    Process(ProcessesWorker),
+    Syscalls(SyscallsWorker),
+    Network(NetworkWorker),
+}
+
+impl Worker {
+    pub fn run_payload(&self) -> Result<(), WorkerError> {
+        match self {
+            Worker::Endpoint(e) => e.run_payload(),
+            Worker::Process(p) => p.run_payload(),
+            Worker::Syscalls(s) => s.run_payload(),
+            Worker::Network(n) => n.run_payload(),
         }
-        Workload::Endpoints { distribution } => {
-            match distribution {
-                Distribution::Zipfian { n_ports, exponent } => {
-                    let n_ports: f64 = thread_rng()
-                        .sample(Zipf::new(n_ports, exponent).unwrap());
+    }
 
-                    *lower_bound = *upper_bound;
-                    *upper_bound += n_ports as usize;
-                }
-                Distribution::Uniform { lower, upper } => {
-                    // TODO: Double check this branch
-                    let n_ports =
-                        thread_rng().sample(Uniform::new(lower, upper));
-
-                    *lower_bound = *upper_bound;
-                    *upper_bound += n_ports as usize;
-                }
+    pub fn new(
+        workload: WorkloadConfig,
+        base_config: BaseConfig,
+        start_port: u16,
+    ) -> Worker {
+        match workload.workload {
+            Workload::Processes(processes) => {
+                Worker::Process(ProcessesWorker::new(processes, base_config))
             }
-            Box::new(EndpointWorker::new(
-                workload,
-                cpu,
-                process,
-                *lower_bound,
-                *upper_bound,
-            ))
-        }
-        Workload::Syscalls { .. } => {
-            Box::new(SyscallsWorker::new(workload, cpu, process))
-        }
-        Workload::Network { .. } => {
-            Box::new(NetworkWorker::new(workload, cpu, process))
+            Workload::Endpoints(Endpoints {
+                restart_interval,
+                distribution,
+            }) => {
+                let n_ports: u16 = match distribution {
+                    Distribution::Zipfian { n_ports, exponent } => thread_rng()
+                        .sample(Zipf::new(n_ports, exponent).unwrap())
+                        as u16,
+                    Distribution::Uniform { lower, upper } => {
+                        thread_rng().sample(Uniform::new(lower, upper)) as u16
+                    }
+                };
+
+                Worker::Endpoint(EndpointWorker::new(
+                    base_config,
+                    restart_interval,
+                    start_port,
+                    n_ports,
+                ))
+            }
+            Workload::Syscalls(syscalls) => {
+                Worker::Syscalls(SyscallsWorker::new(syscalls, base_config))
+            }
+            Workload::Network(network) => {
+                Worker::Network(NetworkWorker::new(network, base_config))
+            }
         }
     }
 }

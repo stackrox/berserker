@@ -1,59 +1,55 @@
-use std::{fmt::Display, net::TcpListener, thread, time};
+use std::{fmt::Display, net::TcpListener, ops::Range, thread, time};
 
-use core_affinity::CoreId;
 use log::info;
 
-use crate::{BaseConfig, Worker, WorkerError, WorkloadConfig};
+use crate::{BaseConfig, WorkerError};
 
-struct EndpointWorkload {
-    restart_interval: u64,
-    lower: usize,
-    upper: usize,
+struct PortRange {
+    start: u16,
+    length: u16,
+}
+
+impl PortRange {
+    fn new(start: u16, length: u16) -> Self {
+        PortRange { start, length }
+    }
+
+    fn get_range(&self) -> Range<u16> {
+        let end = self.start + self.length;
+        self.start..end
+    }
 }
 
 pub struct EndpointWorker {
     config: BaseConfig,
-    workload: EndpointWorkload,
+    restart_interval: u64,
+    ports: PortRange,
 }
 
 impl EndpointWorker {
     pub fn new(
-        workload: WorkloadConfig,
-        cpu: CoreId,
-        process: usize,
-        lower: usize,
-        upper: usize,
+        config: BaseConfig,
+        restart_interval: u64,
+        start_port: u16,
+        n_ports: u16,
     ) -> Self {
-        let WorkloadConfig {
-            restart_interval,
-            workload: _,
-            per_core: _,
-            workers: _,
-            duration: _,
-        } = workload;
+        let ports = PortRange::new(start_port, n_ports);
 
         EndpointWorker {
-            config: BaseConfig { cpu, process },
-            workload: EndpointWorkload {
-                restart_interval,
-                lower,
-                upper,
-            },
+            config,
+            restart_interval,
+            ports,
         }
     }
-}
 
-impl Worker for EndpointWorker {
-    fn run_payload(&self) -> Result<(), WorkerError> {
+    pub fn run_payload(&self) -> Result<(), WorkerError> {
         info!("{self}");
 
-        let EndpointWorkload {
-            restart_interval,
-            lower,
-            upper,
-        } = self.workload;
-
-        let listeners: Vec<_> = (lower..upper)
+        // Copy the u64 to prevent moving self into the thread.
+        let restart_interval = self.restart_interval;
+        let listeners: Vec<_> = self
+            .ports
+            .get_range()
             .map(|port| thread::spawn(move || listen(port, restart_interval)))
             .collect();
 
@@ -63,6 +59,10 @@ impl Worker for EndpointWorker {
 
         Ok(())
     }
+
+    pub fn size(&self) -> u16 {
+        self.ports.length
+    }
 }
 
 impl Display for EndpointWorker {
@@ -71,7 +71,7 @@ impl Display for EndpointWorker {
     }
 }
 
-fn listen(port: usize, sleep: u64) -> std::io::Result<()> {
+fn listen(port: u16, sleep: u64) -> std::io::Result<()> {
     let addr = format!("0.0.0.0:{port}");
     let listener = TcpListener::bind(addr)?;
 

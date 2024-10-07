@@ -1,24 +1,23 @@
 use std::{fmt::Display, thread, time};
 
-use core_affinity::CoreId;
 use log::{info, warn};
 use rand::{thread_rng, Rng};
 use rand_distr::Exp;
 use syscalls::{syscall, Sysno};
 
-use crate::{BaseConfig, Worker, WorkerError, Workload, WorkloadConfig};
+use crate::{workload, BaseConfig, WorkerError};
 
 #[derive(Debug, Copy, Clone)]
 pub struct SyscallsWorker {
     config: BaseConfig,
-    workload: WorkloadConfig,
+    arrival_rate: f64,
 }
 
 impl SyscallsWorker {
-    pub fn new(workload: WorkloadConfig, cpu: CoreId, process: usize) -> Self {
+    pub fn new(workload: workload::Syscalls, config: BaseConfig) -> Self {
         SyscallsWorker {
-            config: BaseConfig { cpu, process },
-            workload,
+            config,
+            arrival_rate: workload.arrival_rate,
         }
     }
 
@@ -31,15 +30,9 @@ impl SyscallsWorker {
             }
         }
     }
-}
 
-impl Worker for SyscallsWorker {
-    fn run_payload(&self) -> Result<(), WorkerError> {
+    pub fn run_payload(&self) -> Result<(), WorkerError> {
         info!("{self}");
-
-        let Workload::Syscalls { arrival_rate } = self.workload.workload else {
-            unreachable!()
-        };
 
         loop {
             let worker = *self;
@@ -48,7 +41,7 @@ impl Worker for SyscallsWorker {
             });
 
             let interval: f64 =
-                thread_rng().sample(Exp::new(arrival_rate).unwrap());
+                thread_rng().sample(Exp::new(self.arrival_rate).unwrap());
             info!(
                 "{}-{}: Interval {}, rounded {}",
                 self.config.cpu.id,

@@ -1,40 +1,28 @@
 use std::{fmt::Display, process::Command, thread, time};
 
-use core_affinity::CoreId;
 use fork::{fork, Fork};
 use log::{info, warn};
 use nix::{sys::wait::waitpid, unistd::Pid};
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use rand_distr::Exp;
 
-use crate::{BaseConfig, Worker, WorkerError, Workload, WorkloadConfig};
+use crate::{workload, BaseConfig, WorkerError};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct ProcessesWorker {
     config: BaseConfig,
-    workload: WorkloadConfig,
+    workload: workload::Processes,
 }
 
 impl ProcessesWorker {
-    pub fn new(workload: WorkloadConfig, cpu: CoreId, process: usize) -> Self {
-        ProcessesWorker {
-            config: BaseConfig { cpu, process },
-            workload,
-        }
+    pub fn new(workload: workload::Processes, config: BaseConfig) -> Self {
+        ProcessesWorker { config, workload }
     }
 
     fn spawn_process(&self, lifetime: u64) -> Result<(), WorkerError> {
-        let Workload::Processes {
-            arrival_rate: _,
-            departure_rate: _,
-            random_process,
-        } = self.workload.workload
-        else {
-            unreachable!()
-        };
         let BaseConfig { cpu, process } = self.config;
 
-        if random_process {
+        if self.workload.random_process {
             let uniq_arg: String = rand::thread_rng()
                 .sample_iter(&Alphanumeric)
                 .take(7)
@@ -62,26 +50,21 @@ impl ProcessesWorker {
             }
         }
     }
-}
 
-impl Worker for ProcessesWorker {
-    fn run_payload(&self) -> Result<(), WorkerError> {
+    pub fn run_payload(&self) -> Result<(), WorkerError> {
         info!("{self}");
 
-        let Workload::Processes {
+        let workload::Processes {
             arrival_rate,
             departure_rate,
             random_process: _,
-        } = self.workload.workload
-        else {
-            unreachable!()
-        };
+        } = self.workload;
 
         loop {
             let lifetime: f64 =
                 thread_rng().sample(Exp::new(departure_rate).unwrap());
 
-            let worker = *self;
+            let worker = self.clone();
             thread::spawn(move || {
                 worker.spawn_process((lifetime * 1000.0).round() as u64)
             });

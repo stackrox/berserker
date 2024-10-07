@@ -1,7 +1,6 @@
-restart_interval = 10
-
 [workload]
 type = "endpoints"
+restart_interval = 10
 distribution = "zipf"
 n_ports = 200
 exponent = 1.4
