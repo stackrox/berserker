@@ -24,7 +24,7 @@ use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
 pub struct NetworkWorker {
     config: BaseConfig,
     server: bool,
-    address: (u8, u8, u8, u8),
+    address: Ipv4Address,
     target_port: u16,
     nconnections: u32,
     send_interval: u128,
@@ -46,6 +46,8 @@ impl NetworkWorker {
             send_interval,
         } = workload;
 
+        let address = Ipv4Address([address.0, address.1, address.2, address.3]);
+
         NetworkWorker {
             config: BaseConfig { cpu, process },
             server,
@@ -59,15 +61,15 @@ impl NetworkWorker {
     /// Start a simple server. The client side is going to be a networking
     /// worker as well, so for convenience of troubleshooting do not error
     /// out if something unexpected happened, log and proceed instead.
-    fn start_server(
-        &self,
-        addr: Ipv4Address,
-        target_port: u16,
-    ) -> Result<(), WorkerError> {
-        debug!("Starting server at {:?}:{:?}", addr, target_port);
+    fn start_server(&self) -> Result<(), WorkerError> {
+        debug!(
+            "Starting server at {:?}:{:?}",
+            self.address, self.target_port
+        );
 
         let listener =
-            TcpListener::bind((addr.to_string(), target_port)).unwrap();
+            TcpListener::bind((self.address.to_string(), self.target_port))
+                .unwrap();
 
         for stream in listener.incoming() {
             let mut stream = stream.unwrap();
@@ -113,14 +115,13 @@ impl NetworkWorker {
         Ok(())
     }
 
-    fn start_client(
-        &self,
-        addr: Ipv4Address,
-        target_port: u16,
-    ) -> Result<(), WorkerError> {
-        debug!("Starting client at {:?}:{:?}", addr, target_port);
+    fn start_client(&self) -> Result<(), WorkerError> {
+        debug!(
+            "Starting client at {:?}:{:?}",
+            self.address, self.target_port
+        );
 
-        let (mut iface, mut device, fd) = self.setup_tuntap(addr);
+        let (mut iface, mut device, fd) = self.setup_tuntap(self.address);
         let cx = iface.context();
 
         // Open static set of connections, that are going to live throughout
@@ -142,10 +143,14 @@ impl NetworkWorker {
         {
             let index = i;
             let (local_addr, local_port) =
-                self.get_local_addr_port(addr, index);
+                self.get_local_addr_port(self.address, index);
             info!("connecting from {}:{}", local_addr, local_port);
             socket
-                .connect(cx, (addr, target_port), (local_addr, local_port))
+                .connect(
+                    cx,
+                    (self.address, self.target_port),
+                    (local_addr, local_port),
+                )
                 .unwrap();
         }
 
@@ -287,13 +292,10 @@ impl NetworkWorker {
     pub fn run_payload(&self) -> Result<(), WorkerError> {
         info!("{self}");
 
-        let address = self.address;
-        let ip_addr = Ipv4Address([address.0, address.1, address.2, address.3]);
-
         if self.server {
-            let _ = self.start_server(ip_addr, self.target_port);
+            let _ = self.start_server();
         } else {
-            let _ = self.start_client(ip_addr, self.target_port);
+            let _ = self.start_client();
         }
 
         Ok(())
