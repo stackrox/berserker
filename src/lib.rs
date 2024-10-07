@@ -9,7 +9,7 @@ use nix::{
     },
     unistd::Pid,
 };
-use std::{fmt::Display, thread};
+use std::{fmt::Display, sync::Arc, thread};
 use workload::WorkloadConfig;
 
 use crate::worker::Worker;
@@ -89,17 +89,20 @@ pub fn run(config: WorkloadConfig) {
         info!("In total: {total_ports}");
     }
 
-    let processes = &handles.clone();
+    let handles = Arc::new(handles);
 
     thread::scope(|s| {
         if config.duration != 0 {
+            // Cloning the Arc so we can hand it over to the watcher thread
+            let handles = handles.clone();
+
             // Spin a watcher thread
             s.spawn(move || loop {
                 thread::sleep(std::time::Duration::from_secs(1));
                 let elapsed = duration_timer.elapsed().unwrap().as_secs();
 
                 if elapsed > config.duration {
-                    for handle in processes.iter().flatten() {
+                    for handle in handles.iter().flatten() {
                         info!("Terminating: {}", *handle);
                         match kill(Pid::from_raw(*handle), Signal::SIGTERM) {
                             Ok(()) => {
@@ -117,7 +120,7 @@ pub fn run(config: WorkloadConfig) {
         }
 
         s.spawn(move || {
-            for handle in processes.iter().flatten() {
+            for handle in handles.iter().flatten() {
                 info!("waitpid: {}", *handle);
                 waitpid(Pid::from_raw(*handle), None).unwrap();
             }
