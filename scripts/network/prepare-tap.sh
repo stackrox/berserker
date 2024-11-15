@@ -16,14 +16,16 @@ which ip &>/dev/null || stop "Don't have the ip tool"
 which whoami &>/dev/null || stop "Don't have the whoami tool"
 which iptables &>/dev/null || stop "Don't have the iptables tool"
 which sysctl &>/dev/null || stop "Don't have the sysctl tool"
+which firewall-cmd &>/dev/null || stop "Don't have the firewal-cmd tool"
 
-ADDRESS="192.168.0.1/16"
-NAME="tun0"
+ADDRESS="10.0.0.1/16"
+NAME="berserker0"
 USER="$(whoami)"
 CONFIGURE_IPTABLE="false"
+CONFIGURE_FIREWALD="false"
 CONFIGURE_TUNTAP_IF_EXISTS="false"
 
-while getopts ":a:t:u:io" opt; do
+while getopts ":a:t:u:i:fo" opt; do
   case $opt in
     a) ADDRESS="${OPTARG}"
     ;;
@@ -32,6 +34,8 @@ while getopts ":a:t:u:io" opt; do
     u) USER="${OPTARG}"
     ;;
     i) CONFIGURE_IPTABLE="true"
+    ;;
+    f) CONFIGURE_FIREWALD="true"
     ;;
     o) CONFIGURE_TUNTAP_IF_EXISTS="true"
     ;;
@@ -57,6 +61,12 @@ ip link set "${NAME}" up
 
 echo "Assigning address ${ADDRESS} to device ${NAME}..."
 ip addr add "${ADDRESS}" dev "${NAME}"
+
+if [[ "${CONFIGURE_FIREWALD}" == "true" ]];
+then
+    echo "Adding to the trusted zone..."
+    firewall-cmd --zone=trusted --add-interface="${NAME}"
+fi
 
 if [[ "${CONFIGURE_IPTABLE}" == "true" ]];
 then
