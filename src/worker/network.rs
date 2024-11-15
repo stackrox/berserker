@@ -217,7 +217,7 @@ impl NetworkWorker {
         &self,
         addr: Ipv4Address,
     ) -> (Interface, FaultInjector<Tracer<TunTapInterface>>, i32) {
-        let device_name = "tun0";
+        let device_name = "berserker0";
         let device = TunTapInterface::new(&device_name, Medium::Ip).unwrap();
         let fd = device.as_raw_fd();
 
