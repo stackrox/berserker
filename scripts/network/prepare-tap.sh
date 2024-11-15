@@ -62,7 +62,7 @@ ip link set "${NAME}" up
 echo "Assigning address ${ADDRESS} to device ${NAME}..."
 ip addr add "${ADDRESS}" dev "${NAME}"
 
-if [[ "${CONFIGURE_FIREWALD}" == "true" ]];
+if [[ "${CONFIGURE_FIREWALLD}" == "true" ]];
 then
     echo "Adding to the trusted zone..."
     firewall-cmd --zone=trusted --add-interface="${NAME}"
