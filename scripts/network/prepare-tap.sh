@@ -22,7 +22,7 @@ ADDRESS="10.0.0.1/16"
 NAME="berserker0"
 USER="$(whoami)"
 CONFIGURE_IPTABLE="false"
-CONFIGURE_FIREWALD="false"
+CONFIGURE_FIREWALLD="false"
 CONFIGURE_TUNTAP_IF_EXISTS="false"
 
 while getopts ":a:t:u:i:fo" opt; do
