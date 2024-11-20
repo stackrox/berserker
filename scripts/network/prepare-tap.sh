@@ -35,7 +35,7 @@ while getopts ":a:t:u:i:fo" opt; do
     ;;
     i) CONFIGURE_IPTABLE="true"
     ;;
-    f) CONFIGURE_FIREWALD="true"
+    f) CONFIGURE_FIREWALLD="true"
     ;;
     o) CONFIGURE_TUNTAP_IF_EXISTS="true"
     ;;
