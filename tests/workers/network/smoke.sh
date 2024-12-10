@@ -26,6 +26,13 @@ pkill berserker || true
 echo "Starting the server..."
 berserker tests/workers/network/workload.server.toml &> /tmp/server.log &
 
+# wait until it's accepting connections
+while ! echo test | socat stdio tcp4-connect:10.0.0.1:8081 ;
+do
+    echo "Wait for server";
+    sleep 0.5;
+done
+
 echo "Starting bpftrace..."
 bpftrace tests/workers/network/sys_accept.bt &> /tmp/tcpaccept.log &
 
