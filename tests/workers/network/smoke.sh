@@ -7,6 +7,7 @@ which bpftrace &>/dev/null || stop "Don't have bpftrace"
 which bpftool &>/dev/null || stop "Don't have bpftool"
 which berserker &>/dev/null || stop "Don't have berserker"
 which pkill &>/dev/null || stop "Don't have pkill"
+which socat &>/dev/null || stop "Don't have socat"
 
 if [ ! -d "tests/workers/network/" ]; then
   echo "Can't find test directory. Smoke tests have to be run from the project root directory"
