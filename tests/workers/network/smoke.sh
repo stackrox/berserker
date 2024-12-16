@@ -3,6 +3,20 @@ set -eou pipefail
 
 stop() { echo "$*" 1>&2 ; exit 1; }
 
+with_sudo() {
+    if [ -z "${CI_RUN}"]; then
+        command sudo "$@"
+    else
+        command "$@"
+    fi
+}
+
+export CI_RUN=${CI:-""}
+
+if [ -z "${CI_RUN}"]; then
+    which sudo &>/dev/null || stop "Don't have sudo"
+fi
+
 which bpftrace &>/dev/null || stop "Don't have bpftrace"
 which bpftool &>/dev/null || stop "Don't have bpftool"
 which berserker &>/dev/null || stop "Don't have berserker"
@@ -13,15 +27,21 @@ if [ ! -d "tests/workers/network/" ]; then
   echo "Can't find test directory. Smoke tests have to be run from the project root directory"
 fi
 
+if [ -z "${CI_RUN}" ]; then
+    # Needs elevated privileges to run bpftrace, bpftool and client berserker.
+    # Ask for it and cache the credentials.
+    sudo -v
+fi
+
 echo "Cleanup..."
 rm -f /tmp/server.log
-rm -f /tmp/client.log
-rm -f /tmp/tcpaccept.log
+with_sudo rm -f /tmp/client.log
+with_sudo rm -f /tmp/tcpaccept.log
 # in case if it's still running from a previous run
-pkill berserker || true
+with_sudo pkill berserker || true
 
 # make berserkers verbose
-#export RUST_LOG=trace
+export RUST_LOG=trace
 
 # start the server before bpftrace, to skip first accept
 echo "Starting the server..."
@@ -35,12 +55,13 @@ do
 done
 
 echo "Starting bpftrace..."
-bpftrace tests/workers/network/sys_accept.bt &> /tmp/tcpaccept.log &
+
+with_sudo bpftrace tests/workers/network/sys_accept.bt &> /tmp/tcpaccept.log &
 
 # let bpftrace attach probes
 attempts=0
 
-while ! bpftool prog | grep -q bpftrace ;
+while ! with_sudo bpftool prog | grep -q bpftrace ;
 do
     if [[ "$attempts" -gt 20 ]]; then
        echo "Can't find bpftool after ${attempts} attempts."
@@ -53,14 +74,15 @@ do
 done
 
 echo "Starting the client..."
-berserker tests/workers/network/workload.client.toml &> /tmp/client.log &
+with_sudo -E PATH=$PATH bash -c \
+    'berserker tests/workers/network/workload.client.toml &> /tmp/client.log &'
 
 # let it do some work
 sleep 5;
 
 echo "Stopping..."
-pkill berserker || true
-pkill bpftrace || true
+with_sudo pkill berserker || true
+with_sudo pkill bpftrace || true
 
 echo "Verifying the results..."
 ENDPOINTS=$(cat /tmp/tcpaccept.log | grep hit | wc -l || echo "")
@@ -69,8 +91,8 @@ if (( $ENDPOINTS > 0 )); then
     echo "PASS (${ENDPOINTS} seen connections)"
 
     rm -f /tmp/server.log
-    rm -f /tmp/client.log
-    rm -f /tmp/tcpaccept.log
+    with_sudo rm -f /tmp/client.log
+    with_sudo rm -f /tmp/tcpaccept.log
 
     exit 0;
 else
