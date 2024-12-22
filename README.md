@@ -29,6 +29,10 @@ workloads:
   connections. To reduce amount of resources needed for such simulation, a tun
   device is used to craft an external client connection in the userspace.
 
+* BPF based workload, which creates a specified number of simple BPF programs,
+  attached to a specified tracepoint. This allows to simulate program
+  contention on the same attachment point.
+
 Every workload is executed via set of worker processes, that are distributed
 among available system CPU cores to fully utilize system resources.
 

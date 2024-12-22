@@ -103,6 +103,27 @@ pub enum Workload {
         #[serde(default = "default_network_send_interval")]
         send_interval: u128,
     },
+
+    /// How to load bpf progs.
+    Bpf {
+        /// Which tracepoint BPF programs will be attached to. Could be taken
+        /// from the tracefs, e.g.
+        /// /sys/kernel/debug/tracing/events/sched/sched_process_exit/id
+        #[serde(default = "default_bpf_tracepoint")]
+        tracepoint: u64,
+
+        /// Number of BPF programs to launch
+        #[serde(default = "default_bpf_nprogs")]
+        nprogs: u64,
+    },
+}
+
+fn default_bpf_tracepoint() -> u64 {
+    306
+}
+
+fn default_bpf_nprogs() -> u64 {
+    100
 }
 
 fn default_network_send_interval() -> u128 {

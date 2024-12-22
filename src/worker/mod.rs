@@ -5,10 +5,11 @@ use rand_distr::{Uniform, Zipf};
 use crate::{Distribution, Worker, Workload, WorkloadConfig};
 
 use self::{
-    endpoints::EndpointWorker, network::NetworkWorker,
+    bpf::BpfWorker, endpoints::EndpointWorker, network::NetworkWorker,
     processes::ProcessesWorker, syscalls::SyscallsWorker,
 };
 
+pub mod bpf;
 pub mod endpoints;
 pub mod network;
 pub mod processes;
@@ -56,6 +57,9 @@ pub fn new_worker(
         }
         Workload::Network { .. } => {
             Box::new(NetworkWorker::new(workload, cpu, process))
+        }
+        Workload::Bpf { .. } => {
+            Box::new(BpfWorker::new(workload, cpu, process))
         }
     }
 }
