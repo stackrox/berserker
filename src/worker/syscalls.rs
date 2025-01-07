@@ -1,7 +1,8 @@
+use std::time::Instant;
 use std::{fmt::Display, thread, time};
 
 use core_affinity::CoreId;
-use log::{info, warn};
+use log::{info, trace};
 use rand::{thread_rng, Rng};
 use rand_distr::Exp;
 use syscalls::{syscall, Sysno};
@@ -22,12 +23,21 @@ impl SyscallsWorker {
         }
     }
 
-    fn do_syscall(&self) -> std::io::Result<()> {
-        match unsafe { syscall!(Sysno::getpid) } {
-            Ok(_) => Ok(()),
-            Err(err) => {
-                warn!("Syscall failed: {}", err);
-                Ok(())
+    fn do_syscall(&self, syscall: Sysno) {
+        #[cfg(debug_assertions)]
+        {
+            match unsafe { syscall!(syscall) } {
+                Ok(_) => (),
+                Err(err) => {
+                    info!("Syscall failed: {}", err);
+                }
+            }
+        }
+        #[cfg(not(debug_assertions))]
+        {
+            unsafe {
+                // Some syscalls are expected to fail, ignore the result
+                let _ = syscall!(syscall);
             }
         }
     }
@@ -37,29 +47,61 @@ impl Worker for SyscallsWorker {
     fn run_payload(&self) -> Result<(), WorkerError> {
         info!("{self}");
 
-        let Workload::Syscalls { arrival_rate } = self.workload.workload else {
+        let mut counter = 0;
+        let mut start = Instant::now();
+
+        let Workload::Syscalls {
+            arrival_rate,
+            tight_loop,
+            syscall_nr,
+        } = self.workload.workload
+        else {
             unreachable!()
         };
 
+        let exp = Exp::new(arrival_rate).unwrap();
+        let rng = thread_rng();
+        let mut rng_iter = rng.sample_iter(exp);
+
+        let syscall = Sysno::from(syscall_nr);
+        info!("Running syscall {syscall}");
+
         loop {
             let worker = *self;
-            thread::spawn(move || {
-                worker.do_syscall().unwrap();
-            });
 
-            let interval: f64 =
-                thread_rng().sample(Exp::new(arrival_rate).unwrap());
-            info!(
+            if start.elapsed().as_secs() > 10 {
+                info!(
+                    "CPU {}, {}",
+                    self.config.cpu.id,
+                    counter / start.elapsed().as_secs()
+                );
+                start = Instant::now();
+                counter = 0;
+            }
+
+            counter += 1;
+            // Do the syscall directly, without spawning a thread (it would
+            // introduce too much overhead for a quick syscall).
+            worker.do_syscall(syscall);
+
+            // If running in a tight loop, go to the next iteration
+            if tight_loop {
+                continue;
+            }
+
+            // Otherwise calculate waiting time
+            let interval: f64 = rng_iter.next().unwrap();
+            trace!(
                 "{}-{}: Interval {}, rounded {}",
                 self.config.cpu.id,
                 self.config.process,
                 interval,
-                (interval * 1000.0).round() as u64
+                (interval * 1000000.0).round() as u64
             );
-            thread::sleep(time::Duration::from_millis(
-                (interval * 1000.0).round() as u64,
+            thread::sleep(time::Duration::from_nanos(
+                (interval * 1000000.0).round() as u64,
             ));
-            info!("{}-{}: Continue", self.config.cpu.id, self.config.process);
+            trace!("{}-{}: Continue", self.config.cpu.id, self.config.process);
         }
     }
 }
