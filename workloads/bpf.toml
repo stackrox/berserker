@@ -1,0 +1,8 @@
+restart_interval = 10
+per_core = false
+workers = 1
+
+[workload]
+type = "bpf"
+tracepoint = 306
+nporgs = 100
