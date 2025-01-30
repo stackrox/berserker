@@ -19,27 +19,48 @@ workloads:
   modelled by Zipf \[3\] or uniform distributions (to cover extreme cases, when
   one process has significantly more endpoints than others).
 
-* Syscall based workload to evaluate certain type of edge cases. For now only
-  one syscall, `getpid` is included, to verify an overhead where normally
-  Collector doesn't stay in the way, but could be with the vanilla Falco.
-  Similarly to the process based workload, syscalls are also modelled by a
-  Poisson process.
+* Syscall based workload to evaluate certain type of edge cases. Intended to
+  verify an overhead where normally Collector doesn't stay in the way, but
+  could be with the vanilla Falco. Similarly to the process based workload,
+  syscalls are also modelled by a Poisson process.
 
 * Network based workload to simulate systems with large number of open
-  connections. To reduce amount of resources needed for such simulation, a tun
-  device is used to craft an external client connection in the userspace.
+  connections coming from variety of different addresses. To reduce amount of
+  resources needed for such simulation and be able to pretend a connection is
+  coming from a particular address, a tun device is used to craft an external
+  client connection in the userspace.
 
 * BPF based workload, which creates a specified number of simple BPF programs,
   attached to a specified tracepoint. This allows to simulate program
   contention on the same attachment point.
 
-Every workload is executed via set of worker processes, that are distributed
-among available system CPU cores to fully utilize system resources.
+# Configuration
+
+There are few ways to tune the configuration:
+
+* If nothing is provided, Berserker will search for a file at
+  `/etc/berserker/workload.toml`
+
+* The target configuration can be provided via the first commandline argument,
+  i.e. `berserker workload.toml`
+
+* The configuration could be further adjusted via environment variables, e.g.
+  `BERSERKER__WORKLOAD__ARRIVAL_RATE=1`. Such a variable have to start with the
+  prefix `BERSERKER__` and use `__` to change nesting level.
+
+You can specify which workload you want to use via option `type`. For every
+type of workload there is an example in the `workloads/` directory.
+
+A workload can be executed using one or more worker processes. By default one
+worker is spawn per CPU core and and pinned to it to fully utilize system
+resources. For some workload it might be needed to have a specified number of
+worker instead without any implied affinity -- in this case they could be
+configured usign option `per_core` and `workers`.
 
 # How to contribute
 
 * Make sure you've got recent enough version of Rust compiler. At the moment
-  the minimal required version is 1.71 .
+  the minimal required version is 1.80 .
 
 * Build project either directly using `cargo build`, or using containerized
   version implemented as a make `all` target.
@@ -54,7 +75,7 @@ among available system CPU cores to fully utilize system resources.
 
 * Make sure tests are passing, `cargo test`.
 
-* Run linter, `cargo clippy`.
+* Run linter and formatter, `cargo clippy` & `cargo fmt`.
 
 \[1\]: https://en.wikipedia.org/wiki/Poisson_point_process
 
