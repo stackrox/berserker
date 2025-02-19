@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -eou pipefail
+set -x
 
 # This script helps to prepare an environment for developing berserker network
 # workload. It has the following preparatory steps:
@@ -14,9 +15,7 @@ stop() { echo "$*" 1>&2 ; exit 1; }
 
 which ip &>/dev/null || stop "Don't have the ip tool"
 which whoami &>/dev/null || stop "Don't have the whoami tool"
-which iptables &>/dev/null || stop "Don't have the iptables tool"
 which sysctl &>/dev/null || stop "Don't have the sysctl tool"
-which firewall-cmd &>/dev/null || stop "Don't have the firewal-cmd tool"
 
 ADDRESS="10.0.0.1/16"
 NAME="berserker0"
@@ -53,6 +52,8 @@ then
     then
         exit 1;
     fi
+
+    ip link delete "${NAME}"
 fi
 
 echo "Creating tun device ${NAME} for user ${USER}..."
@@ -64,12 +65,16 @@ ip addr add "${ADDRESS}" dev "${NAME}"
 
 if [[ "${CONFIGURE_FIREWALLD}" == "true" ]];
 then
+    which firewall-cmd &>/dev/null || stop "Don't have the firewal-cmd tool"
+
     echo "Adding to the trusted zone..."
     firewall-cmd --zone=trusted --add-interface="${NAME}"
 fi
 
 if [[ "${CONFIGURE_IPTABLE}" == "true" ]];
 then
+    which iptables &>/dev/null || stop "Don't have the iptables tool"
+
     echo "Enabling ip forward..."
     sysctl net.ipv4.ip_forward=1
 
