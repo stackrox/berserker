@@ -171,7 +171,9 @@ where
         AddressInput::Array(a) => Ok((a[0], a[1], a[2], a[3])),
         AddressInput::Str(s) => {
             let parts: Vec<u8> = s
-                .trim_matches(|c: char| c == '[' || c == ']' || c.is_whitespace())
+                .trim_matches(|c: char| {
+                    c == '[' || c == ']' || c.is_whitespace()
+                })
                 .split(',')
                 .map(|x| x.trim().parse::<u8>())
                 .collect::<Result<_, _>>()
