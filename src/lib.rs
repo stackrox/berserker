@@ -101,6 +101,7 @@ pub enum Workload {
 
         /// Which ip address to use for the server to listen on,
         /// or for the client to connect to
+        #[serde(deserialize_with = "parse_address")]
         address: (u8, u8, u8, u8),
 
         /// Port for the server to listen on, or for the client
@@ -146,6 +147,43 @@ fn default_bpf_tracepoint() -> u64 {
 
 fn default_bpf_nprogs() -> u64 {
     100
+}
+
+fn parse_address<'de, D>(deserializer: D) -> Result<(u8, u8, u8, u8), D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::Error;
+    use serde::Deserialize;
+
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum AddressInput {
+        Tuple((u8, u8, u8, u8)),
+        Array([u8; 4]),
+        Str(String),
+    }
+
+    let input = AddressInput::deserialize(deserializer)?;
+
+    match input {
+        AddressInput::Tuple(t) => Ok(t),
+        AddressInput::Array(a) => Ok((a[0], a[1], a[2], a[3])),
+        AddressInput::Str(s) => {
+            let parts: Vec<u8> = s
+                .trim_matches(|c: char| c == '[' || c == ']' || c.is_whitespace())
+                .split(',')
+                .map(|x| x.trim().parse::<u8>())
+                .collect::<Result<_, _>>()
+                .map_err(D::Error::custom)?;
+        
+            if parts.len() != 4 {
+                return Err(D::Error::custom("IP address should have 4 parts"));
+            }
+        
+            Ok((parts[0], parts[1], parts[2], parts[3]))
+        }
+    }
 }
 
 fn default_network_send_interval() -> u128 {
