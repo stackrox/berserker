@@ -176,11 +176,11 @@ where
                 .map(|x| x.trim().parse::<u8>())
                 .collect::<Result<_, _>>()
                 .map_err(D::Error::custom)?;
-        
+
             if parts.len() != 4 {
                 return Err(D::Error::custom("IP address should have 4 parts"));
             }
-        
+
             Ok((parts[0], parts[1], parts[2], parts[3]))
         }
     }
