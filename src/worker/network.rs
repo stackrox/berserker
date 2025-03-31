@@ -388,12 +388,10 @@ impl Worker for NetworkWorker {
             unreachable!()
         };
 
-        let ip_addr = Ipv4Address([address.0, address.1, address.2, address.3]);
-
         if server {
-            let _ = self.start_server(ip_addr, target_port);
+            let _ = self.start_server(address.into(), target_port);
         } else {
-            let _ = self.start_client(ip_addr, target_port);
+            let _ = self.start_client(address.into(), target_port);
         }
 
         Ok(())

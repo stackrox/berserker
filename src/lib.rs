@@ -1,6 +1,6 @@
 use core_affinity::CoreId;
 use serde::Deserialize;
-use std::fmt::Display;
+use std::{fmt::Display, net::Ipv4Addr};
 use syscalls::Sysno;
 
 pub mod worker;
@@ -101,7 +101,7 @@ pub enum Workload {
 
         /// Which ip address to use for the server to listen on,
         /// or for the client to connect to
-        address: (u8, u8, u8, u8),
+        address: Ipv4Addr,
 
         /// Port for the server to listen on, or for the client
         /// to connect to.
