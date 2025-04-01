@@ -5,7 +5,7 @@ workers = 1
 [workload]
 type = "network"
 server = true
-address = [10, 0, 0, 1]
+address = "10.0.0.1"
 target_port = 8081
 arrival_rate = 0.1
 departure_rate = 0.1
