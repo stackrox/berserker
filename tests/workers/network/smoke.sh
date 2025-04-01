@@ -9,10 +9,6 @@ which berserker &>/dev/null || stop "Don't have berserker"
 which pkill &>/dev/null || stop "Don't have pkill"
 which socat &>/dev/null || stop "Don't have socat"
 
-if [ ! -d "tests/workers/network/" ]; then
-  echo "Can't find test directory. Smoke tests have to be run from the project root directory"
-fi
-
 echo "Cleanup..."
 rm -f /tmp/server.log
 rm -f /tmp/client.log
@@ -25,7 +21,7 @@ pkill berserker || true
 
 # start the server before bpftrace, to skip first accept
 echo "Starting the server..."
-berserker tests/workers/network/workload.server.toml &> /tmp/server.log &
+berserker workload.server.toml &> /tmp/server.log &
 
 # wait until it's accepting connections
 while ! echo test | socat stdio tcp4-connect:10.0.0.1:8081 ;
@@ -35,7 +31,7 @@ do
 done
 
 echo "Starting bpftrace..."
-bpftrace tests/workers/network/sys_accept.bt &> /tmp/tcpaccept.log &
+bpftrace sys_accept.bt &> /tmp/tcpaccept.log &
 
 # let bpftrace attach probes
 attempts=0
@@ -53,7 +49,7 @@ do
 done
 
 echo "Starting the client..."
-berserker tests/workers/network/workload.client.toml &> /tmp/client.log &
+berserker workload.client.toml &> /tmp/client.log &
 
 # let it do some work
 sleep 5;
