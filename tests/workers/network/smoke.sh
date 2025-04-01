@@ -19,9 +19,11 @@ pkill berserker || true
 # make berserkers verbose
 #export RUST_LOG=trace
 
+TEST_DIR="$(cd -- "$( dirname -- "${BASH_SOURCE[0]}")"  &> /dev/null && pwd)"
+
 # start the server before bpftrace, to skip first accept
 echo "Starting the server..."
-berserker workload.server.toml &> /tmp/server.log &
+berserker "${TEST_DIR}/workload.server.toml" &> /tmp/server.log &
 
 # wait until it's accepting connections
 while ! echo test | socat stdio tcp4-connect:10.0.0.1:8081 ;
@@ -31,7 +33,7 @@ do
 done
 
 echo "Starting bpftrace..."
-bpftrace sys_accept.bt &> /tmp/tcpaccept.log &
+bpftrace "${TEST_DIR}/sys_accept.bt" &> /tmp/tcpaccept.log &
 
 # let bpftrace attach probes
 attempts=0
@@ -49,7 +51,7 @@ do
 done
 
 echo "Starting the client..."
-berserker workload.client.toml &> /tmp/client.log &
+berserker "${TEST_DIR}/workload.client.toml" &> /tmp/client.log &
 
 # let it do some work
 sleep 5;
