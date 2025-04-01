@@ -106,6 +106,7 @@ impl NetworkWorker {
             arrival_rate,
             departure_rate,
             nconnections,
+            ports_per_addr,
             send_interval,
         } = self.workload.workload
         else {
@@ -141,9 +142,9 @@ impl NetworkWorker {
             .filter_map(|(_h, s)| tcp::Socket::downcast_mut(s))
             .enumerate()
         {
-            let index = i;
+            let index = i as u64;
             let (local_addr, local_port) =
-                self.get_local_addr_port(addr, index);
+                self.get_local_addr_port(addr, ports_per_addr, index);
             info!("connecting from {}:{}", local_addr, local_port);
             socket
                 .connect(cx, (addr, target_port), (local_addr, local_port))
@@ -184,9 +185,9 @@ impl NetworkWorker {
                 let tcp_tx_buffer = tcp::SocketBuffer::new(vec![0; 1024]);
                 let mut socket = tcp::Socket::new(tcp_rx_buffer, tcp_tx_buffer);
 
-                let index = total_conns as usize;
+                let index = total_conns as u64;
                 let (local_addr, local_port) =
-                    self.get_local_addr_port(addr, index);
+                    self.get_local_addr_port(addr, ports_per_addr, index);
 
                 socket
                     .connect(
@@ -348,23 +349,24 @@ impl NetworkWorker {
     }
 
     /// Map socket index to a local port and address. The address octets are
-    /// incremented every 100 sockets, whithin this interval the local port
+    /// incremented every ports_per_addr sockets, whithin this interval the local port
     /// is incremented.
     fn get_local_addr_port(
         &self,
         addr: Ipv4Address,
-        index: usize,
+        ports_per_addr: u16,
+        index: u64,
     ) -> (IpAddress, u16) {
-        // 254 (a2 octet) * 254 (a3 octet) * 100 (port)
+        // 254 (a2 octet) * 254 (a3 octet) * ports_per_address (port)
         // gives us maximum 6451600 connections that could be opened
-        let local_port = 49152 + (index % 100) as u16;
+        let local_port = 49152 + (index % ports_per_addr as u64) as u16;
         debug!("addr {}, index {}", addr, index);
 
         let local_addr = IpAddress::v4(
             addr.0[0],
             addr.0[1],
-            (((index / 100) + 2) / 255) as u8,
-            (((index / 100) + 2) % 255) as u8,
+            (((index / ports_per_addr as u64) + 2) / 255) as u8,
+            (((index / ports_per_addr as u64) + 2) % 255) as u8,
         );
 
         (local_addr, local_port)
@@ -382,6 +384,7 @@ impl Worker for NetworkWorker {
             arrival_rate: _,
             departure_rate: _,
             nconnections: _,
+            ports_per_addr,
             send_interval: _,
         } = self.workload.workload
         else {
