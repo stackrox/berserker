@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 set -eou pipefail
-set -x
 
 # This script helps to prepare an environment for developing berserker network
 # workload. It has the following preparatory steps:
