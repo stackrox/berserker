@@ -107,16 +107,9 @@ fn main() {
                 let elapsed = duration_timer.elapsed().unwrap().as_secs();
 
                 if elapsed > config.duration {
-                    for handle in processes.into_iter().flatten() {
+                    for handle in processes.iter().flatten() {
                         info!("Terminating: {}", *handle);
-                        match kill(Pid::from_raw(*handle), Signal::SIGTERM) {
-                            Ok(()) => {
-                                continue;
-                            }
-                            Err(e) => {
-                                continue;
-                            }
-                        }
+                        let _ = kill(Pid::from_raw(*handle), Signal::SIGTERM);
                     }
 
                     break;
@@ -125,7 +118,7 @@ fn main() {
         }
 
         s.spawn(move || {
-            for handle in processes.into_iter().flatten() {
+            for handle in processes.iter().flatten() {
                 info!("waitpid: {}", *handle);
                 waitpid(Pid::from_raw(*handle), None).unwrap();
             }
