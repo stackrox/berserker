@@ -384,7 +384,7 @@ impl Worker for NetworkWorker {
             arrival_rate: _,
             departure_rate: _,
             nconnections: _,
-            ports_per_addr,
+            ports_per_addr: _,
             send_interval: _,
         } = self.workload.workload
         else {
