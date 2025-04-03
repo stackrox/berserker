@@ -143,8 +143,7 @@ impl NetworkWorker {
             .enumerate()
         {
             let index = i as u64;
-            let (local_addr, local_port) =
-                self.get_local_addr_port(addr, ports_per_addr, index);
+            let (local_addr, local_port) = get_local_addr_port(addr, ports_per_addr, index);
             info!("connecting from {}:{}", local_addr, local_port);
             socket
                 .connect(cx, (addr, target_port), (local_addr, local_port))
@@ -186,8 +185,7 @@ impl NetworkWorker {
                 let mut socket = tcp::Socket::new(tcp_rx_buffer, tcp_tx_buffer);
 
                 let index = total_conns as u64;
-                let (local_addr, local_port) =
-                    self.get_local_addr_port(addr, ports_per_addr, index);
+                let (local_addr, local_port) = get_local_addr_port(addr, ports_per_addr, index);
 
                 socket
                     .connect(
@@ -348,29 +346,37 @@ impl NetworkWorker {
         (iface, device, fd)
     }
 
-    /// Map socket index to a local port and address. The address octets are
-    /// incremented every ports_per_addr sockets, whithin this interval the local port
-    /// is incremented.
-    fn get_local_addr_port(
-        &self,
-        addr: Ipv4Address,
-        ports_per_addr: u16,
-        index: u64,
-    ) -> (IpAddress, u16) {
-        // 254 (a2 octet) * 254 (a3 octet) * ports_per_address (port)
-        // gives us maximum 6451600 connections that could be opened
-        let local_port = 49152 + (index % ports_per_addr as u64) as u16;
-        debug!("addr {}, index {}", addr, index);
+}
 
-        let local_addr = IpAddress::v4(
-            addr.0[0],
-            addr.0[1],
-            (((index / ports_per_addr as u64) + 2) / 255) as u8,
-            (((index / ports_per_addr as u64) + 2) % 255) as u8,
-        );
+/// Map socket index to a local port and address. The address octets are
+/// incremented every ports_per_addr sockets, whithin this interval the local port
+/// is incremented.
+fn get_local_addr_port(
+    addr: Ipv4Address,
+    ports_per_addr: u16,
+    index: u64,
+) -> (IpAddress, u16) {
+    let local_port = 49152 + (index % ports_per_addr as u64) as u16;
+    debug!("addr {}, index {}", addr, index);
 
-        (local_addr, local_port)
+    let mut addr_index = index / ports_per_addr as u64;
+    let mut octets = addr.0;
+
+    for i in (0..4).rev() {
+        octets[i] = (addr_index + octets[i] as u64) as u8;
+        addr_index = addr_index / 256
     }
+
+    let local_addr = IpAddress::v4(octets[0], octets[1], octets[2], octets[3]);
+
+    //let local_addr = IpAddress::v4(
+    //    ((index / ports_per_addr as u64) / (256 * 256 * 256) + addr.0[0] as u64) as u8,
+    //    ((index / ports_per_addr as u64) / (256 * 256) + addr.0[1] as u64) as u8,
+    //    ((index / ports_per_addr as u64) / 256 + addr.0[2] as u64) as u8,
+    //    ((index / ports_per_addr as u64) + addr.0[3] as u64) as u8,
+    //);
+
+    (local_addr, local_port)
 }
 
 impl Worker for NetworkWorker {
@@ -404,5 +410,23 @@ impl Worker for NetworkWorker {
 impl Display for NetworkWorker {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.config)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    //use std::net::Ipv4Addr;
+
+    #[test]
+    fn test_get_local_addr_port() {
+        let addr = Ipv4Address::new(192, 168, 1, 100);
+        let ports_per_addr = 10;
+
+        let (ip, port) = get_local_addr_port(addr, ports_per_addr, 15);
+
+        // 49152 + (15 % 10)
+        assert_eq!(port, 49157);
+        assert_eq!(ip, IpAddress::v4(192, 168, 1, 101));
     }
 }
