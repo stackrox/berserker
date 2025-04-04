@@ -106,7 +106,7 @@ impl NetworkWorker {
             arrival_rate,
             departure_rate,
             nconnections,
-            ports_per_addr,
+            conns_per_addr,
             send_interval,
         } = self.workload.workload
         else {
@@ -143,7 +143,7 @@ impl NetworkWorker {
             .enumerate()
         {
             let index = i as u64;
-            let (local_addr, local_port) = get_local_addr_port(addr, ports_per_addr, index);
+            let (local_addr, local_port) = get_local_addr_port(addr, conns_per_addr, index);
             info!("connecting from {}:{}", local_addr, local_port);
             socket
                 .connect(cx, (addr, target_port), (local_addr, local_port))
@@ -185,7 +185,7 @@ impl NetworkWorker {
                 let mut socket = tcp::Socket::new(tcp_rx_buffer, tcp_tx_buffer);
 
                 let index = total_conns as u64;
-                let (local_addr, local_port) = get_local_addr_port(addr, ports_per_addr, index);
+                let (local_addr, local_port) = get_local_addr_port(addr, conns_per_addr, index);
 
                 socket
                     .connect(
@@ -349,17 +349,17 @@ impl NetworkWorker {
 }
 
 /// Map socket index to a local port and address. The address octets are
-/// incremented every ports_per_addr sockets, whithin this interval the local port
+/// incremented every conns_per_addr sockets, whithin this interval the local port
 /// is incremented.
 fn get_local_addr_port(
     addr: Ipv4Address,
-    ports_per_addr: u16,
+    conns_per_addr: u16,
     index: u64,
 ) -> (IpAddress, u16) {
-    let local_port = 49152 + (index % ports_per_addr as u64) as u16;
+    let local_port = 49152 + (index % conns_per_addr as u64) as u16;
     debug!("addr {}, index {}", addr, index);
 
-    let mut addr_index = index / ports_per_addr as u64;
+    let mut addr_index = index / conns_per_addr as u64;
     let mut octets = addr.0;
 
     info!("addr_index= {}", addr_index);
@@ -391,7 +391,7 @@ impl Worker for NetworkWorker {
             arrival_rate: _,
             departure_rate: _,
             nconnections: _,
-            ports_per_addr: _,
+            conns_per_addr: _,
             send_interval: _,
         } = self.workload.workload
         else {
@@ -421,7 +421,7 @@ mod tests {
     #[test]
     fn test_get_local_addr_port() {
         let test_cases = vec![
-            // (addr, ports_per_addr, index, expected_ip, expected_port)
+            // (addr, conns_per_addr, index, expected_ip, expected_port)
             (
                 Ipv4Address::new(192, 168, 1, 100),
                 10,
@@ -459,8 +459,8 @@ mod tests {
             ),
         ];
 
-        for (addr, ports_per_addr, index, expected_ip, expected_port) in test_cases {
-            let (ip, port) = get_local_addr_port(addr, ports_per_addr, index);
+        for (addr, conns_per_addr, index, expected_ip, expected_port) in test_cases {
+            let (ip, port) = get_local_addr_port(addr, conns_per_addr, index);
             assert_eq!(ip, expected_ip);
             assert_eq!(port, expected_port);
         }
