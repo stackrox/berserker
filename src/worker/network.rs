@@ -373,7 +373,7 @@ fn get_local_addr_port(
             carry = 0;
         }
         octets[i] = octet as u8;
-        addr_index = addr_index / 256;
+        addr_index /= 256;
     }
 
     let local_addr = IpAddress::v4(octets[0], octets[1], octets[2], octets[3]);
