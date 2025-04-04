@@ -143,7 +143,8 @@ impl NetworkWorker {
             .enumerate()
         {
             let index = i as u64;
-            let (local_addr, local_port) = get_local_addr_port(addr, conns_per_addr, index);
+            let (local_addr, local_port) =
+                get_local_addr_port(addr, conns_per_addr, index);
             info!("connecting from {}:{}", local_addr, local_port);
             socket
                 .connect(cx, (addr, target_port), (local_addr, local_port))
@@ -185,7 +186,8 @@ impl NetworkWorker {
                 let mut socket = tcp::Socket::new(tcp_rx_buffer, tcp_tx_buffer);
 
                 let index = total_conns as u64;
-                let (local_addr, local_port) = get_local_addr_port(addr, conns_per_addr, index);
+                let (local_addr, local_port) =
+                    get_local_addr_port(addr, conns_per_addr, index);
 
                 socket
                     .connect(
@@ -345,7 +347,6 @@ impl NetworkWorker {
 
         (iface, device, fd)
     }
-
 }
 
 /// Map socket index to a local port and address. The address octets are
@@ -427,39 +428,41 @@ mod tests {
                 10,
                 15,
                 IpAddress::v4(192, 168, 1, 101),
-                49157
+                49157,
             ),
             (
                 Ipv4Address::new(192, 168, 1, 255),
                 9,
                 15,
                 IpAddress::v4(192, 168, 2, 0),
-                49158
+                49158,
             ),
             (
                 Ipv4Address::new(192, 255, 255, 255),
                 12,
                 15,
                 IpAddress::v4(193, 0, 0, 0),
-                49155
+                49155,
             ),
             (
                 Ipv4Address::new(192, 168, 1, 100),
                 1,
                 512,
                 IpAddress::v4(192, 168, 3, 100),
-                49152
+                49152,
             ),
             (
                 Ipv4Address::new(192, 168, 1, 100),
                 1,
                 65636,
                 IpAddress::v4(192, 169, 1, 200),
-                49152
+                49152,
             ),
         ];
 
-        for (addr, conns_per_addr, index, expected_ip, expected_port) in test_cases {
+        for (addr, conns_per_addr, index, expected_ip, expected_port) in
+            test_cases
+        {
             let (ip, port) = get_local_addr_port(addr, conns_per_addr, index);
             assert_eq!(ip, expected_ip);
             assert_eq!(port, expected_port);
