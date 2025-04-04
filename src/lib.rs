@@ -116,6 +116,11 @@ pub enum Workload {
         /// Starting number of connections
         nconnections: u32,
 
+        // How many connections to make to the same server address and port with
+        // different client ports
+        #[serde(default = "default_conns_per_addr")]
+        conns_per_addr: u16,
+
         /// How often send data via new connections, in milliseconds.
         /// The interval is applied for all connections, e.g. an interval
         /// of 100 ms for 100 connections means that every 100 ms one out
@@ -145,6 +150,10 @@ fn default_bpf_tracepoint() -> u64 {
 }
 
 fn default_bpf_nprogs() -> u64 {
+    100
+}
+
+fn default_conns_per_addr() -> u16 {
     100
 }
 
