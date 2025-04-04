@@ -362,19 +362,20 @@ fn get_local_addr_port(
     let mut addr_index = index / ports_per_addr as u64;
     let mut octets = addr.0;
 
+    info!("addr_index= {}", addr_index);
+    let mut carry = 0;
     for i in (0..4).rev() {
-        octets[i] = (addr_index + octets[i] as u64) as u8;
-        addr_index = addr_index / 256
+        let octet = addr_index % 256 + (octets[i] as u32 + carry) as u64;
+        if octet > 255 {
+            carry = 1;
+        } else {
+            carry = 0;
+        }
+        octets[i] = octet as u8;
+        addr_index = addr_index / 256;
     }
 
     let local_addr = IpAddress::v4(octets[0], octets[1], octets[2], octets[3]);
-
-    //let local_addr = IpAddress::v4(
-    //    ((index / ports_per_addr as u64) / (256 * 256 * 256) + addr.0[0] as u64) as u8,
-    //    ((index / ports_per_addr as u64) / (256 * 256) + addr.0[1] as u64) as u8,
-    //    ((index / ports_per_addr as u64) / 256 + addr.0[2] as u64) as u8,
-    //    ((index / ports_per_addr as u64) + addr.0[3] as u64) as u8,
-    //);
 
     (local_addr, local_port)
 }
@@ -416,17 +417,52 @@ impl Display for NetworkWorker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    //use std::net::Ipv4Addr;
 
     #[test]
     fn test_get_local_addr_port() {
-        let addr = Ipv4Address::new(192, 168, 1, 100);
-        let ports_per_addr = 10;
+        let test_cases = vec![
+            // (addr, ports_per_addr, index, expected_ip, expected_port)
+            (
+                Ipv4Address::new(192, 168, 1, 100),
+                10,
+                15,
+                IpAddress::v4(192, 168, 1, 101),
+                49157
+            ),
+            (
+                Ipv4Address::new(192, 168, 1, 255),
+                9,
+                15,
+                IpAddress::v4(192, 168, 2, 0),
+                49158
+            ),
+            (
+                Ipv4Address::new(192, 255, 255, 255),
+                12,
+                15,
+                IpAddress::v4(193, 0, 0, 0),
+                49155
+            ),
+            (
+                Ipv4Address::new(192, 168, 1, 100),
+                1,
+                512,
+                IpAddress::v4(192, 168, 3, 100),
+                49152
+            ),
+            (
+                Ipv4Address::new(192, 168, 1, 100),
+                1,
+                65636,
+                IpAddress::v4(192, 169, 1, 200),
+                49152
+            ),
+        ];
 
-        let (ip, port) = get_local_addr_port(addr, ports_per_addr, 15);
-
-        // 49152 + (15 % 10)
-        assert_eq!(port, 49157);
-        assert_eq!(ip, IpAddress::v4(192, 168, 1, 101));
+        for (addr, ports_per_addr, index, expected_ip, expected_port) in test_cases {
+            let (ip, port) = get_local_addr_port(addr, ports_per_addr, index);
+            assert_eq!(ip, expected_ip);
+            assert_eq!(port, expected_port);
+        }
     }
 }
