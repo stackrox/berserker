@@ -10,6 +10,9 @@ all:
 	docker build -t builder -f Dockerfile.build .
 	docker build -t berserker .
 
+.PHONY: build-network
+build-berserker-network:
+	docker build -t berserker-network scripts/network
 
 .PHONY: tag
 tag:
