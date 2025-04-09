@@ -105,8 +105,8 @@ impl NetworkWorker {
             target_port: _,
             arrival_rate,
             departure_rate,
-            n_static_connections,
-            n_dyn_connections,
+            connections_static,
+            connections_dyn_max,
             conns_per_addr,
             send_interval,
             preempt,
@@ -131,7 +131,7 @@ impl NetworkWorker {
         // the whole run
         let mut sockets = SocketSet::new(vec![]);
 
-        for _i in 0..n_static_connections {
+        for _i in 0..connections_static {
             let tcp_rx_buffer = tcp::SocketBuffer::new(vec![0; 1024]);
             let tcp_tx_buffer = tcp::SocketBuffer::new(vec![0; 1024]);
             let tcp_socket = tcp::Socket::new(tcp_rx_buffer, tcp_tx_buffer);
@@ -166,7 +166,7 @@ impl NetworkWorker {
             thread_rng().sample(Exp::new(arrival_rate).unwrap());
 
         // Current number of opened connections, both dynamic and static
-        let mut total_conns = n_static_connections;
+        let mut total_conns = connections_static;
 
         // The main loop, where connection state will be updated, and dynamic
         // connections will be opened/closed
@@ -204,10 +204,10 @@ impl NetworkWorker {
                     thread_rng().sample(Exp::new(departure_rate).unwrap());
 
                 // If we've reached the connections limit
-                if dynamic_sockets.len() == n_dyn_connections as usize {
+                if dynamic_sockets.len() == connections_dyn_max as usize {
                     if preempt {
                         let idx = thread_rng()
-                            .gen_range(0..n_dyn_connections as usize);
+                            .gen_range(0..connections_dyn_max as usize);
                         let (key, _) = sockets.iter().nth(idx).unwrap();
                         dynamic_sockets.remove(&key);
                         close_sockets.push(key);

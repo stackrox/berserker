@@ -114,10 +114,10 @@ pub enum Workload {
         departure_rate: f64,
 
         /// Number of static connections
-        n_static_connections: u32,
+        connections_static: u32,
 
         /// Maximum number of dynamic connections
-        n_dyn_connections: u32,
+        connections_dyn_max: u32,
 
         // How many connections to make to the same server address and port with
         // different client ports
