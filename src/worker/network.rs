@@ -204,17 +204,17 @@ impl NetworkWorker {
                     thread_rng().sample(Exp::new(departure_rate).unwrap());
 
                 // If we've reached the connections limit
-                if dynamic_sockets.len() == n_dyn_connections as usize
-                    && preempt
-                {
-                    let idx =
-                        thread_rng().gen_range(0..n_dyn_connections as usize);
-                    let (key, _) = sockets.iter().nth(idx).unwrap();
-                    dynamic_sockets.remove(&key);
-                    close_sockets.push(key);
+                if dynamic_sockets.len() == n_dyn_connections as usize {
+                    if preempt {
+                        let idx = thread_rng()
+                            .gen_range(0..n_dyn_connections as usize);
+                        let (key, _) = sockets.iter().nth(idx).unwrap();
+                        dynamic_sockets.remove(&key);
+                        close_sockets.push(key);
 
-                    dynamic_sockets
-                        .insert(handle, (SystemTime::now(), lifetime));
+                        dynamic_sockets
+                            .insert(handle, (SystemTime::now(), lifetime));
+                    }
                 } else {
                     dynamic_sockets
                         .insert(handle, (SystemTime::now(), lifetime));
@@ -406,13 +406,7 @@ impl Worker for NetworkWorker {
             server,
             address,
             target_port,
-            arrival_rate: _,
-            departure_rate: _,
-            n_static_connections: _,
-            n_dyn_connections: _,
-            conns_per_addr: _,
-            send_interval: _,
-            preempt: _,
+            ..
         } = self.workload.workload
         else {
             unreachable!()
