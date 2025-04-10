@@ -12,3 +12,4 @@ departure_rate = 0.1
 connections_static = 100
 connections_dyn_max = 1000
 preempt = true
+conns_per_addr = 1

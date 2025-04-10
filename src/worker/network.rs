@@ -191,31 +191,32 @@ impl NetworkWorker {
                 let (local_addr, local_port) =
                     get_local_addr_port(addr, conns_per_addr, index);
 
-                socket
-                    .connect(
-                        iface.context(),
-                        (addr, target_port),
-                        (local_addr, local_port),
-                    )
-                    .unwrap();
-
-                let handle = sockets.add(socket);
                 let lifetime: f64 =
                     thread_rng().sample(Exp::new(departure_rate).unwrap());
 
                 // If we've reached the connections limit
-                if dynamic_sockets.len() == connections_dyn_max as usize {
-                    if preempt {
-                        let idx = thread_rng()
-                            .gen_range(0..connections_dyn_max as usize);
-                        let (key, _) = sockets.iter().nth(idx).unwrap();
-                        dynamic_sockets.remove(&key);
-                        close_sockets.push(key);
+                if dynamic_sockets.len() == connections_dyn_max as usize
+                    && preempt
+                {
+                    let idx =
+                        thread_rng().gen_range(0..connections_dyn_max as usize);
+                    let (key, _) = sockets.iter().nth(idx).unwrap();
+                    dynamic_sockets.remove(&key);
+                    close_sockets.push(key);
+                }
 
-                        dynamic_sockets
-                            .insert(handle, (SystemTime::now(), lifetime));
-                    }
-                } else {
+                // either we've just removed a socket and want to preempt
+                // or, we've have space and we're processing normally
+                if dynamic_sockets.len() < connections_dyn_max as usize {
+                    socket
+                        .connect(
+                            iface.context(),
+                            (addr, target_port),
+                            (local_addr, local_port),
+                        )
+                        .unwrap();
+
+                    let handle = sockets.add(socket);
                     dynamic_sockets
                         .insert(handle, (SystemTime::now(), lifetime));
                 }
