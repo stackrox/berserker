@@ -113,8 +113,11 @@ pub enum Workload {
         /// Rate of closing connections
         departure_rate: f64,
 
-        /// Starting number of connections
-        nconnections: u32,
+        /// Number of static connections
+        connections_static: u32,
+
+        /// Maximum number of dynamic connections
+        connections_dyn_max: u32,
 
         // How many connections to make to the same server address and port with
         // different client ports
@@ -129,6 +132,12 @@ pub enum Workload {
         /// so that it will not impact connections monitoring.
         #[serde(default = "default_network_send_interval")]
         send_interval: u128,
+
+        /// Whether or not to wait for a connection to be removed before adding
+        /// a new one, when the dynamic connection limit is reached.
+        /// if true: an old connection will be forcibly removed
+        /// if false: wait for a connection to naturally age-off before adding a new one
+        preempt: bool,
     },
 
     /// How to load bpf progs.

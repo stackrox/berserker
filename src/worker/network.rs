@@ -105,9 +105,11 @@ impl NetworkWorker {
             target_port: _,
             arrival_rate,
             departure_rate,
-            nconnections,
+            connections_static,
+            connections_dyn_max,
             conns_per_addr,
             send_interval,
+            preempt,
         } = self.workload.workload
         else {
             unreachable!()
@@ -129,7 +131,7 @@ impl NetworkWorker {
         // the whole run
         let mut sockets = SocketSet::new(vec![]);
 
-        for _i in 0..nconnections {
+        for _i in 0..connections_static {
             let tcp_rx_buffer = tcp::SocketBuffer::new(vec![0; 1024]);
             let tcp_tx_buffer = tcp::SocketBuffer::new(vec![0; 1024]);
             let tcp_socket = tcp::Socket::new(tcp_rx_buffer, tcp_tx_buffer);
@@ -164,7 +166,7 @@ impl NetworkWorker {
             thread_rng().sample(Exp::new(arrival_rate).unwrap());
 
         // Current number of opened connections, both dynamic and static
-        let mut total_conns = nconnections;
+        let mut total_conns = connections_static;
 
         // The main loop, where connection state will be updated, and dynamic
         // connections will be opened/closed
@@ -201,7 +203,22 @@ impl NetworkWorker {
                 let lifetime: f64 =
                     thread_rng().sample(Exp::new(departure_rate).unwrap());
 
-                dynamic_sockets.insert(handle, (SystemTime::now(), lifetime));
+                // If we've reached the connections limit
+                if dynamic_sockets.len() == connections_dyn_max as usize {
+                    if preempt {
+                        let idx = thread_rng()
+                            .gen_range(0..connections_dyn_max as usize);
+                        let (key, _) = sockets.iter().nth(idx).unwrap();
+                        dynamic_sockets.remove(&key);
+                        close_sockets.push(key);
+
+                        dynamic_sockets
+                            .insert(handle, (SystemTime::now(), lifetime));
+                    }
+                } else {
+                    dynamic_sockets
+                        .insert(handle, (SystemTime::now(), lifetime));
+                }
 
                 info!(
                     "New connecting from {}:{}, lifetime {}, index {}",
@@ -389,11 +406,7 @@ impl Worker for NetworkWorker {
             server,
             address,
             target_port,
-            arrival_rate: _,
-            departure_rate: _,
-            nconnections: _,
-            conns_per_addr: _,
-            send_interval: _,
+            ..
         } = self.workload.workload
         else {
             unreachable!()

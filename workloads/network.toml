@@ -7,4 +7,6 @@ address = "192.168.0.1"
 target_port = 8080
 arrival_rate = 0.1
 departure_rate = 0.1
-nconnections = 10
+connections_static = 10
+connections_dyn_max = 100
+preempt = true
