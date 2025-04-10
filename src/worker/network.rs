@@ -274,7 +274,8 @@ impl NetworkWorker {
                 }
 
                 if socket.may_send() {
-                    let elapsed = send_timer.elapsed().unwrap().as_millis();
+                    let elapsed =
+                        send_timer.elapsed().unwrap().as_millis() as u64;
 
                     // Throttle sending data via connection, since the main
                     // purpose is to excercise connection monitoring.
