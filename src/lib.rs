@@ -131,7 +131,7 @@ pub enum Workload {
         /// This parameter allows to control the overhead of sending data,
         /// so that it will not impact connections monitoring.
         #[serde(default = "default_network_send_interval")]
-        send_interval: u128,
+        send_interval: u64,
 
         /// Whether or not to wait for a connection to be removed before adding
         /// a new one, when the dynamic connection limit is reached.
@@ -166,7 +166,7 @@ fn default_conns_per_addr() -> u16 {
     100
 }
 
-fn default_network_send_interval() -> u128 {
+fn default_network_send_interval() -> u64 {
     100
 }
 
