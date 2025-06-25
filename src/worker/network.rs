@@ -369,8 +369,23 @@ impl NetworkWorker {
 }
 
 /// Map socket index to a local port and address. The address octets are
-/// incremented every conns_per_addr sockets, whithin this interval the local port
-/// is incremented.
+/// incremented every conns_per_addr sockets, whithin this interval the local
+/// port is incremented. The first port to be taken is 49152, an out of blue
+/// large enough number.
+///
+/// E.g. if the base address is 10.0.0.1, we put 100 connections on the same
+/// address and this is 10th connection. In this case we should get
+/// 10.0.0.2:49162 as a result, as if we were inserting 10 new addresses
+/// starting from 10.0.0.2 (remember, 10.0.0.1 is the base address and is
+/// already claimed) incrementing first 100 times the port, then the address.
+///
+/// addr - starting point in the IP address space. The new address is going to
+///         be based on it plus the connection number.
+///
+/// conns_per_addr - how many connections are going to share the same IP
+///         address, and differ only in port value.
+///
+/// index - current global number of the connection.
 fn get_local_addr_port(
     addr: Ipv4Address,
     conns_per_addr: u16,
@@ -379,10 +394,19 @@ fn get_local_addr_port(
     let local_port = 49152 + (index % conns_per_addr as u64) as u16;
     debug!("addr {}, index {}", addr, index);
 
+    // conns_per_addr effectively groups connections together, one address per
+    // group with only port being different. addr_index represent current index
+    // inside the space of such groups.
     let mut addr_index = index / conns_per_addr as u64;
     let mut octets = addr.0;
 
-    info!("addr_index= {}", addr_index);
+    // The first resulting local address must not collide with the server
+    // addres, thus shift it by one right away.
+    if octets[3] != 255 {
+        octets[3] = octets[3].saturating_add(1);
+    }
+
+    info!("addr_index = {}", addr_index);
     let mut carry = 0;
     for i in (0..4).rev() {
         let octet = addr_index % 256 + (octets[i] as u32 + carry) as u64;
@@ -442,7 +466,7 @@ mod tests {
                 Ipv4Address::new(192, 168, 1, 100),
                 10,
                 15,
-                IpAddress::v4(192, 168, 1, 101),
+                IpAddress::v4(192, 168, 1, 102),
                 49157,
             ),
             (
@@ -463,15 +487,22 @@ mod tests {
                 Ipv4Address::new(192, 168, 1, 100),
                 1,
                 512,
-                IpAddress::v4(192, 168, 3, 100),
+                IpAddress::v4(192, 168, 3, 101),
                 49152,
             ),
             (
                 Ipv4Address::new(192, 168, 1, 100),
                 1,
                 65636,
-                IpAddress::v4(192, 169, 1, 200),
+                IpAddress::v4(192, 169, 1, 201),
                 49152,
+            ),
+            (
+                Ipv4Address::new(10, 0, 0, 1),
+                100,
+                1,
+                IpAddress::v4(10, 0, 0, 2),
+                49153,
             ),
         ];
 
