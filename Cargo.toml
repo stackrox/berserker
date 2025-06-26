@@ -20,6 +20,6 @@ config = "0.13.3"
 syscalls = "0.6.13"
 serde = { version = "1.0.171", features = ["derive"] }
 libc = "0.2.169"
-smoltcp = {git = "https://github.com/erthalion/smoltcp.git", branch="feature/any-ip-for-arp"}
+smoltcp = "0.12.0"
 aya = "0.13.1"
 aya-obj = "0.2.1"
