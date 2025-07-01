@@ -88,7 +88,7 @@ then
     "${IPTABLES}" -A FORWARD -i "${NAME}" -s "${ADDRESS}" -j ACCEPT
     "${IPTABLES}" -A FORWARD -o "${NAME}" -d "${ADDRESS}" -j ACCEPT
 
-    RULE_NR=$(iptables-nft -t filter -L INPUT --line-numbers |\
+    RULE_NR=$("${IPTABLES}" -t filter -L INPUT --line-numbers |\
                 grep "REJECT     all" |\
                 awk '{print $1}')
 
