@@ -23,7 +23,7 @@ CONFIGURE_IPTABLE="false"
 CONFIGURE_FIREWALLD="false"
 CONFIGURE_TUNTAP_IF_EXISTS="false"
 
-while getopts ":a:t:u:i:fo" opt; do
+while getopts ":a:t:u:ifo" opt; do
   case $opt in
     a) ADDRESS="${OPTARG}"
     ;;
@@ -62,34 +62,40 @@ ip link set "${NAME}" up
 echo "Assigning address ${ADDRESS} to device ${NAME}..."
 ip addr add "${ADDRESS}" dev "${NAME}"
 
+echo "Enabling ip forward..."
+sysctl net.ipv4.ip_forward=1
+
 if [[ "${CONFIGURE_FIREWALLD}" == "true" ]];
 then
     which firewall-cmd &>/dev/null || stop "Don't have the firewal-cmd tool"
 
     echo "Adding to the trusted zone..."
-    firewall-cmd --zone=trusted --add-interface="${NAME}"
+    firewall-cmd --zone=trusted --add-interface="${NAME}" || true
 fi
 
+echo "${CONFIGURE_IPTABLE}"
 if [[ "${CONFIGURE_IPTABLE}" == "true" ]];
 then
-    which iptables &>/dev/null || stop "Don't have the iptables tool"
+    IPTABLES=iptables
+    if command -v iptables-nft &> /dev/null; then
+      IPTABLES=iptables-nft
+    fi
 
-    echo "Enabling ip forward..."
-    sysctl net.ipv4.ip_forward=1
+    which "${IPTABLES}" &>/dev/null || stop "Don't have the iptables tool"
 
     echo "Preparing iptable..."
-    iptables -t nat -A POSTROUTING -s "${ADDRESS}" -j MASQUERADE
-    iptables -A FORWARD -i "${NAME}" -s "${ADDRESS}" -j ACCEPT
-    iptables -A FORWARD -o "${NAME}" -d "${ADDRESS}" -j ACCEPT
+    "${IPTABLES}" -t nat -A POSTROUTING -s "${ADDRESS}" -j MASQUERADE
+    "${IPTABLES}" -A FORWARD -i "${NAME}" -s "${ADDRESS}" -j ACCEPT
+    "${IPTABLES}" -A FORWARD -o "${NAME}" -d "${ADDRESS}" -j ACCEPT
 
-    RULE_NR=$(iptables -t filter -L INPUT --line-numbers |\
+    RULE_NR=$("${IPTABLES}" -t filter -L INPUT --line-numbers |\
                 grep "REJECT     all" |\
                 awk '{print $1}')
 
     # Excempt tun device from potentiall reject all rule
     if [[ $RULE_NR == "" ]]; then
-        iptables -I INPUT -i "${NAME}" -s "${ADDRESS}" -j ACCEPT
+        "${IPTABLES}" -I INPUT -i "${NAME}" -s "${ADDRESS}" -j ACCEPT
     else
-        iptables -I INPUT $((RULE_NR - 1)) -i "${NAME}" -s "${ADDRESS}" -j ACCEPT
+        "${IPTABLES}" -I INPUT $((RULE_NR - 1)) -i "${NAME}" -s "${ADDRESS}" -j ACCEPT
     fi
 fi
