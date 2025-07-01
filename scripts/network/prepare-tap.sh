@@ -76,12 +76,17 @@ fi
 echo "${CONFIGURE_IPTABLE}"
 if [[ "${CONFIGURE_IPTABLE}" == "true" ]];
 then
-    which iptables-nft &>/dev/null || stop "Don't have the iptables tool"
+    IPTABLES=iptables
+    if command -v iptables-nft &> /dev/null; then
+      IPTABLES=iptables-nft
+    fi
+
+    which "${IPTABLES}" &>/dev/null || stop "Don't have the iptables tool"
 
     echo "Preparing iptable..."
-    iptables-nft -t nat -A POSTROUTING -s "${ADDRESS}" -j MASQUERADE
-    iptables-nft -A FORWARD -i "${NAME}" -s "${ADDRESS}" -j ACCEPT
-    iptables-nft -A FORWARD -o "${NAME}" -d "${ADDRESS}" -j ACCEPT
+    "${IPTABLES}" -t nat -A POSTROUTING -s "${ADDRESS}" -j MASQUERADE
+    "${IPTABLES}" -A FORWARD -i "${NAME}" -s "${ADDRESS}" -j ACCEPT
+    "${IPTABLES}" -A FORWARD -o "${NAME}" -d "${ADDRESS}" -j ACCEPT
 
     RULE_NR=$(iptables-nft -t filter -L INPUT --line-numbers |\
                 grep "REJECT     all" |\
