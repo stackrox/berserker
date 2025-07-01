@@ -96,6 +96,6 @@ then
     if [[ $RULE_NR == "" ]]; then
         "${IPTABLES}" -I INPUT -i "${NAME}" -s "${ADDRESS}" -j ACCEPT
     else
-        iptables-nft -I INPUT $((RULE_NR - 1)) -i "${NAME}" -s "${ADDRESS}" -j ACCEPT
+        "${IPTABLES}" -I INPUT $((RULE_NR - 1)) -i "${NAME}" -s "${ADDRESS}" -j ACCEPT
     fi
 fi
