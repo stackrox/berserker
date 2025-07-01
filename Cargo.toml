@@ -15,7 +15,7 @@ rand_distr = "0.4.3"
 usdt = "0.3.5"
 futures = "0.3"
 log = "0.4.6"
-env_logger = "0.9.0"
+env_logger = "0.11.8"
 config = "0.13.3"
 syscalls = "0.6.13"
 serde = { version = "1.0.171", features = ["derive"] }
