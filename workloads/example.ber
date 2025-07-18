@@ -1,0 +1,14 @@
+// Named work block
+main (workers = 2, duration = 10) {
+  // Anon work block with only one unit.
+  // task(name) -- spawn a process with specified name
+  // debug(text) -- log with DEBUG level
+  // open(path) -- open file by path, create if needed and write something to it
+  debug("run task stub");
+  task(stub);
+  debug("open file /tmp/test");
+  open("/tmp/test");
+} : exp {
+  // If no distribution provided, do the unit only once.
+  rate = 10.0;
+}

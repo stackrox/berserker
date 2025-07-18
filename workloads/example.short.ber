@@ -1,0 +1,6 @@
+main (workers = 1) {
+  debug("run task stub");
+  task(stub);
+  debug("open file /tmp/test");
+  open("/tmp/test");
+}

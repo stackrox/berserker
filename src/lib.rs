@@ -3,6 +3,7 @@ use serde::Deserialize;
 use std::{fmt::Display, net::Ipv4Addr};
 use syscalls::Sysno;
 
+pub mod script;
 pub mod worker;
 
 /// Main workload configuration, contains general bits for all types of
@@ -358,8 +359,8 @@ mod tests {
         assert_eq!(restart_interval, 10);
         if let Workload::Syscalls {
             arrival_rate,
-            tight_loop,
-            syscall_nr,
+            tight_loop: _,
+            syscall_nr: _,
         } = workload
         {
             assert_eq!(arrival_rate, 10.0);
