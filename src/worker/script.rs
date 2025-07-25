@@ -1,9 +1,17 @@
 extern crate llvm_sys as llvm;
 
 use std::{
-    collections::HashMap, fmt::Display, fs::OpenOptions, io::Write,
-    process::Command, thread, time,
+    collections::HashMap,
+    fmt::Display,
+    fs::OpenOptions,
+    io::prelude::*,
+    io::Write,
+    net::{Shutdown, TcpStream},
+    process::Command,
+    thread, time,
 };
+
+use std::sync::LazyLock;
 
 use log::{debug, info};
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
@@ -56,10 +64,31 @@ pub unsafe extern "C" fn open(path: *const i8) -> u64 {
 
 /// # Safety
 ///
+/// Open a file with create and write permissions and write to it.
+#[no_mangle]
+pub unsafe extern "C" fn ping(addr: *const i8) -> u64 {
+    let addr = unsafe { CStr::from_ptr(addr).to_str().unwrap() };
+    debug!("Ping {:?}", addr);
+    let mut stream =
+        TcpStream::connect(addr).expect("Couldn't connect to the server...");
+
+    stream.write_all(b"Hello\n").unwrap();
+    let mut buf = vec![];
+    stream.read_exact(&mut buf).unwrap();
+
+    stream
+        .shutdown(Shutdown::Both)
+        .expect("shutdown call failed");
+    0
+}
+
+/// # Safety
+///
 /// Spawn a process with a random argument.
 #[no_mangle]
-pub unsafe extern "C" fn task(name: *const i8) -> u64 {
+pub unsafe extern "C" fn task(name: *const i8, random: bool) -> u64 {
     let name = unsafe { CStr::from_ptr(name) };
+    debug!("Task {:?} {:?}", name, random);
     let uniq_arg: String = rand::thread_rng()
         .sample_iter(&Alphanumeric)
         .take(7)
@@ -74,23 +103,29 @@ pub unsafe extern "C" fn task(name: *const i8) -> u64 {
 
 pub struct RuntimeFunc {
     name: &'static str,
-    // func: extern "C" fn(*const i8) -> u64,
+    func: usize,
 }
 
-pub static RUNTIME: [RuntimeFunc; 3] = [
-    RuntimeFunc {
-        name: "task",
-        // func: task
-    },
-    RuntimeFunc {
-        name: "debug",
-        // func: debug,
-    },
-    RuntimeFunc {
-        name: "open",
-        // func: open,
-    },
-];
+pub static RUNTIME: LazyLock<[RuntimeFunc; 4]> = LazyLock::new(|| {
+    [
+        RuntimeFunc {
+            name: "task",
+            func: task as usize,
+        },
+        RuntimeFunc {
+            name: "debug",
+            func: debug as usize,
+        },
+        RuntimeFunc {
+            name: "open",
+            func: open as usize,
+        },
+        RuntimeFunc {
+            name: "ping",
+            func: ping as usize,
+        },
+    ]
+});
 
 impl ScriptWorker {
     pub fn new(node: Node) -> Self {
@@ -148,7 +183,7 @@ impl ScriptWorker {
                 0,
             );
 
-            for f in &RUNTIME {
+            for f in &*RUNTIME {
                 if module_runtime.contains_key(f.name) {
                     break;
                 };
@@ -198,7 +233,11 @@ impl ScriptWorker {
                 args: _,
                 instructions,
                 dist: _,
-            } = node.clone();
+            } = node.clone()
+            else {
+                unreachable!()
+            };
+
             for instr in instructions {
                 match instr {
                     Instruction::Task { name, args } => {
@@ -220,6 +259,7 @@ impl ScriptWorker {
 
                         let (func, func_type) =
                             module_runtime.get(&name).unwrap();
+
                         LLVMBuildCall2(
                             builder,
                             *func_type,
@@ -246,27 +286,31 @@ impl ScriptWorker {
                 args: _,
                 instructions,
                 dist: _,
-            } = node.clone();
+            } = node.clone()
+            else {
+                unreachable!()
+            };
+
             for instr in instructions {
                 match instr {
                     Instruction::Task { name, args: _ } => {
-                        let func = LLVMGetNamedFunction(
+                        let module_func = LLVMGetNamedFunction(
                             module,
                             format!("{name}\0").into_bytes().as_ptr()
                                 as *const _,
                         );
 
-                        let task = match name.as_str() {
-                            "task" => task,
-                            "debug" => debug,
-                            "open" => open,
-                            unknown => {
-                                panic!("Unknown instruction: {unknown:?}")
-                            }
-                        };
+                        let runtime_func = &RUNTIME
+                            .iter()
+                            .find(|f| f.name == name.as_str())
+                            .unwrap();
 
                         debug!("Add mapping to {:?}", name);
-                        LLVMAddGlobalMapping(ee, func, task as *mut c_void);
+                        LLVMAddGlobalMapping(
+                            ee,
+                            module_func,
+                            runtime_func.func as *mut c_void,
+                        );
                     }
                     unknown => panic!("Unknown instruction: {unknown:?}"),
                 }
@@ -291,10 +335,14 @@ impl Worker for ScriptWorker {
             args: _,
             instructions: _,
             dist,
-        } = self.node.clone();
+        } = self.node.clone()
+        else {
+            unreachable!()
+        };
 
         match dist {
             Some(d) => {
+                debug!("Distribution {:?}", d);
                 let Dist::Exp { rate } = d;
 
                 loop {
@@ -315,7 +363,10 @@ impl Worker for ScriptWorker {
                     ));
                 }
             }
-            None => (self.jit)(),
+            None => {
+                debug!("Single unit");
+                (self.jit)()
+            }
         };
 
         unsafe {

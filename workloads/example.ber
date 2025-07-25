@@ -1,3 +1,7 @@
+machine {
+  server(8080);
+}
+
 // Named work block
 main (workers = 2, duration = 10) {
   // Anon work block with only one unit.

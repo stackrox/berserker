@@ -3,10 +3,10 @@ machine {
 }
 
 main (workers = 1) {
-  debug("run task stub");
-  task(stub);
-  debug("open file /tmp/test");
-  open("/tmp/test");
+  debug("sleep");
+  task("/usr/bin/sleep", "5");
+  debug("ls");
+  task("/usr/bin/ls");
   debug("ping server");
   ping("127.0.0.1:8080");
 }

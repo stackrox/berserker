@@ -2,7 +2,7 @@ use log::debug;
 use pest::{self, error::Error, Parser};
 use std::collections::HashMap;
 
-use crate::script::ast::{Arg, Dist, Instruction, Node};
+use crate::script::ast::{Arg, Dist, Instruction, MachineInstruction, Node};
 
 // ANCHOR: parser
 #[derive(pest_derive::Parser)]
@@ -18,9 +18,17 @@ pub fn parse_instructions(source: &str) -> Result<Vec<Node>, Error<Rule>> {
     pest::set_error_detail(true);
     let mut ast = vec![];
     let pairs = InstructionParser::parse(Rule::file, source)?;
+    let expr_rules = [Rule::expr, Rule::machine];
+
     for pair in pairs {
-        if let Rule::file = pair.as_rule() {
-            ast.push(build_ast_from_expr(pair.into_inner().next().unwrap()));
+        if pair.as_rule() != Rule::file {
+            continue;
+        }
+
+        for i in pair.into_inner() {
+            if expr_rules.contains(&i.as_rule()) {
+                ast.push(build_ast_from_expr(i));
+            }
         }
     }
     debug!("AST {:?}", ast);
@@ -30,6 +38,9 @@ pub fn parse_instructions(source: &str) -> Result<Vec<Node>, Error<Rule>> {
 fn build_ast_from_expr(pair: pest::iterators::Pair<Rule>) -> Node {
     match pair.as_rule() {
         Rule::expr => build_ast_from_expr(pair.into_inner().next().unwrap()),
+        Rule::machine => Node::Machine {
+            m_instructions: build_ast_from_minstr(pair.into_inner()),
+        },
         Rule::function => {
             let mut inner = pair.into_inner();
             let mut work = inner.next().unwrap().into_inner();
@@ -63,6 +74,49 @@ fn build_ast_from_expr(pair: pest::iterators::Pair<Rule>) -> Node {
         }
         unknown => panic!("Unknown expr: {unknown:?}"),
     }
+}
+
+fn build_ast_from_minstr(
+    pair: pest::iterators::Pairs<Rule>,
+) -> Vec<MachineInstruction> {
+    let mut instr = vec![] as Vec<MachineInstruction>;
+
+    for i in pair {
+        let mut inner = i.into_inner();
+        let name = inner.next().unwrap();
+        match name.into_inner().next().unwrap().as_rule() {
+            Rule::server => {
+                let port: u16 = inner
+                    .next()
+                    .unwrap()
+                    .into_inner()
+                    .next()
+                    .unwrap()
+                    .as_span()
+                    .as_str()
+                    .to_string()
+                    .parse()
+                    .unwrap();
+                instr.push(MachineInstruction::Server { port });
+            }
+            unknown => panic!("Unknown machine instruction: {unknown:?}"),
+        }
+
+        //debug!("PAIR {:?}", inner.next().unwrap().as_span());
+        //debug!("PAIR {:?}", inner.next().unwrap().into_inner().next().unwrap().as_span());
+        //match i.as_rule() {
+        //Rule::mInstrName => {
+        //debug!("INSTR {:?}", i.into_inner());
+        ////let mut instrs = i.into_inner().next().unwrap().into_inner();
+        ////let name = instrs.next().unwrap().as_span().as_str().to_string();
+
+        //instr.push(MachineInstruction::Server { port: 80 });
+        //}
+        //unknown => panic!("Unknown machine instruction: {unknown:?}"),
+        //}
+    }
+
+    instr
 }
 
 fn build_ast_from_instr(pair: pest::iterators::Pair<Rule>) -> Vec<Instruction> {

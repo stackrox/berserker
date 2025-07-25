@@ -15,12 +15,20 @@ pub enum Instruction {
 }
 
 #[derive(Debug, Clone)]
+pub enum MachineInstruction {
+    Server { port: u16 },
+}
+
+#[derive(Debug, Clone)]
 pub enum Dist {
     Exp { rate: f64 },
 }
 
 #[derive(Debug, Clone)]
 pub enum Node {
+    Machine {
+        m_instructions: Vec<MachineInstruction>,
+    },
     Work {
         name: String,
         args: HashMap<String, String>,

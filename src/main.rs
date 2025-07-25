@@ -22,6 +22,7 @@ use core_affinity::CoreId;
 use docopt::Docopt;
 use fork::{fork, Fork};
 use itertools::iproduct;
+use itertools::{Either, Itertools};
 use nix::errno::Errno;
 use nix::sys::signal::{kill, Signal};
 use nix::sys::wait::waitpid;
@@ -30,6 +31,7 @@ use serde::Deserialize;
 use std::time::SystemTime;
 use std::{thread, time};
 
+use berserker::machine::apply;
 use berserker::script::{ast::Node, parser::parse_instructions};
 use berserker::{
     worker::new_script_worker, worker::new_worker, WorkloadConfig,
@@ -58,7 +60,24 @@ fn run_script(script_path: String) -> Vec<Option<i32>> {
         parse_instructions(&std::fs::read_to_string(script_path).unwrap())
             .unwrap();
 
-    ast.iter().for_each(|node| {
+    let (machine, works): (Vec<_>, Vec<_>) =
+        ast.iter().partition_map(|node| match node {
+            Node::Work { .. } => Either::Right(node),
+            Node::Machine { .. } => Either::Left(node),
+        });
+
+    if let Some(m) = machine.into_iter().next() {
+        let Node::Machine { m_instructions } = m.clone() else {
+            unreachable!()
+        };
+
+        for instr in m_instructions {
+            debug!("INSTR {:?}", instr);
+            thread::spawn(move || apply(instr.clone()));
+        }
+    };
+
+    works.into_iter().for_each(|node| {
         debug!("AST NODE: {:?}", node);
 
         let Node::Work {
@@ -66,7 +85,10 @@ fn run_script(script_path: String) -> Vec<Option<i32>> {
             args,
             instructions: _,
             dist: _,
-        } = node;
+        } = node
+        else {
+            unreachable!()
+        };
 
         let workers: u32 = args
             .get("workers")

@@ -6,7 +6,7 @@ ident = @{ident_char ~ (ASCII_DIGIT | ident_char)*}
 
 constant = {
     "\"" ~ value ~ "\""
-  | ASCII_DIGIT
+  | ASCII_DIGIT*
 }
 
 arg = {
@@ -15,7 +15,7 @@ arg = {
 }
 
 args = {"(" ~ (arg ~ ("," ~ arg)* ~ ","?)? ~ ")"}
-value = {(ASCII_ALPHANUMERIC| "." | " " | "/")*}
+value = {(ASCII_ALPHANUMERIC| "." | " " | "/" | ":")*}
 
 param = {ident ~ "=" ~ value}
 params = {"(" ~ (param ~ ("," ~ param)* ~ ","?)? ~ ")"}
@@ -24,6 +24,7 @@ task = { "task" }
 network = { "network" }
 port = { "port" }
 open = { "open" }
+ping = { "ping" }
 debug = { "debug" }
 
 funcName = {
@@ -31,6 +32,7 @@ funcName = {
   | network
   | port
   | open
+  | ping
   | debug
 }
 
@@ -65,6 +67,20 @@ function = {
     ~ dist?
 }
 
+server = { "server" }
+load = { "load" }
+memory = { "memory" }
+
+mInstrName = {
+    server
+  | load
+  | memory
+}
+
+machineInstruction = {mInstrName ~ args? ~ ";"}
+
+machine = {"machine" ~ "{" ~ machineInstruction* ~ "}"}
+
 file = {
-    SOI ~ (expr*) ~ EOI
+    SOI ~ machine? ~ (expr*) ~ EOI
 }

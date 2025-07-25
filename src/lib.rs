@@ -3,6 +3,7 @@ use serde::Deserialize;
 use std::{fmt::Display, net::Ipv4Addr};
 use syscalls::Sysno;
 
+pub mod machine;
 pub mod script;
 pub mod worker;
 
