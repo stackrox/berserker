@@ -6,11 +6,11 @@ IP_BASE="${IP_BASE:-223.42.0.1/16}"
 
 /scripts/prepare-tap.sh -a "$IP_BASE" -o
 
-berserker /etc/berserker/network-server.toml &
+berserker -c /etc/berserker/network-server.toml &
 
 SERVER_PID=$!
 
-berserker /etc/berserker/network-client.toml &
+berserker -c /etc/berserker/network-client.toml &
 
 CLIENT_PID=$!
 
