@@ -1,0 +1,86 @@
+WHITESPACE = _{" " | "\t" | NEWLINE}
+COMMENT = _{"//" ~ (!NEWLINE ~ ANY)*}
+
+ident_char = {ASCII_ALPHA | "_" | "$"}
+ident = @{ident_char ~ (ASCII_DIGIT | ident_char)*}
+
+constant = {
+    "\"" ~ value ~ "\""
+  | ASCII_DIGIT*
+}
+
+arg = {
+    ident
+  | constant
+}
+
+args = {"(" ~ (arg ~ ("," ~ arg)* ~ ","?)? ~ ")"}
+value = {(ASCII_ALPHANUMERIC| "." | " " | "/" | ":")*}
+
+param = {ident ~ "=" ~ value}
+params = {"(" ~ (param ~ ("," ~ param)* ~ ","?)? ~ ")"}
+
+task = { "task" }
+network = { "network" }
+port = { "port" }
+open = { "open" }
+ping = { "ping" }
+debug = { "debug" }
+
+funcName = {
+    task
+  | network
+  | port
+  | open
+  | ping
+  | debug
+}
+
+exp = { "exp" }
+zipf = { "zipf" }
+uniform = { "uniform" }
+
+distName = {
+    exp
+  | zipf
+  | uniform
+}
+
+expr = {
+    function
+  | instruction
+}
+
+opt = {ident ~ "=" ~ value ~ ";" }
+
+dist = {":" ~ distName ~ "{" ~ opt* ~ "}"}
+
+work = {ident ~ params?}
+
+instruction = {funcName ~ args? ~ ";"}
+
+instructions = { expr* }
+
+function = {
+    work
+    ~ "{" ~ instructions ~ "}"
+    ~ dist?
+}
+
+server = { "server" }
+load = { "load" }
+memory = { "memory" }
+
+mInstrName = {
+    server
+  | load
+  | memory
+}
+
+machineInstruction = {mInstrName ~ args? ~ ";"}
+
+machine = {"machine" ~ "{" ~ machineInstruction* ~ "}"}
+
+file = {
+    SOI ~ machine? ~ (expr*) ~ EOI
+}

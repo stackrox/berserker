@@ -1,0 +1,12 @@
+machine {
+  server(8080);
+}
+
+main (workers = 1) {
+  debug("sleep");
+  task("/usr/bin/sleep", "5");
+  debug("ls");
+  task("/usr/bin/ls");
+  debug("ping server");
+  ping("127.0.0.1:8080");
+}

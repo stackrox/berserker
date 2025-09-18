@@ -1,0 +1,12 @@
+machine {
+  server(8080);
+}
+
+main (workers = 1) {
+  debug("run task stub");
+  task(stub);
+  debug("open file /tmp/test");
+  open("/tmp/test");
+  debug("ping server");
+  ping("127.0.0.1:8080");
+}
