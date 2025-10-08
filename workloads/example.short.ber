@@ -1,5 +1,6 @@
 machine {
-  server(8080);
+  // server(8080);
+  profile("bpf");
 }
 
 main (workers = 1) {

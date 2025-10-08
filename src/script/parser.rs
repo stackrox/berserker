@@ -99,21 +99,20 @@ fn build_ast_from_minstr(
                     .unwrap();
                 instr.push(MachineInstruction::Server { port });
             }
+            Rule::profile => {
+                let target = inner
+                    .next()
+                    .unwrap()
+                    .into_inner()
+                    .next()
+                    .unwrap()
+                    .as_span()
+                    .as_str()
+                    .to_string();
+                instr.push(MachineInstruction::Profile { target });
+            }
             unknown => panic!("Unknown machine instruction: {unknown:?}"),
         }
-
-        //debug!("PAIR {:?}", inner.next().unwrap().as_span());
-        //debug!("PAIR {:?}", inner.next().unwrap().into_inner().next().unwrap().as_span());
-        //match i.as_rule() {
-        //Rule::mInstrName => {
-        //debug!("INSTR {:?}", i.into_inner());
-        ////let mut instrs = i.into_inner().next().unwrap().into_inner();
-        ////let name = instrs.next().unwrap().as_span().as_str().to_string();
-
-        //instr.push(MachineInstruction::Server { port: 80 });
-        //}
-        //unknown => panic!("Unknown machine instruction: {unknown:?}"),
-        //}
     }
 
     instr
@@ -124,7 +123,8 @@ fn build_ast_from_instr(pair: pest::iterators::Pair<Rule>) -> Vec<Instruction> {
 
     for i in pair.into_inner() {
         let mut instrs = i.into_inner().next().unwrap().into_inner();
-        let name = instrs.next().unwrap().as_span().as_str().to_string();
+        let name = instrs.next().unwrap();
+
         let args_pair = instrs.next().unwrap().into_inner();
         let args: Vec<Arg> = args_pair
             .into_iter()
@@ -143,12 +143,52 @@ fn build_ast_from_instr(pair: pest::iterators::Pair<Rule>) -> Vec<Instruction> {
                     Rule::ident => Arg::Var {
                         name: a.as_span().as_str().to_string(),
                     },
+                    Rule::dynamic => {
+                        let mut inner = a.into_inner();
+                        let name = inner
+                            .next()
+                            .unwrap()
+                            .as_span()
+                            .as_str()
+                            .to_string();
+                        let args_pair = inner.next().unwrap().into_inner();
+                        let args: Vec<Arg> = args_pair
+                            .into_iter()
+                            .map(|arg| {
+                                let inner = arg.into_inner().next().unwrap();
+                                let a = inner.into_inner().next().unwrap();
+                                Arg::Const {
+                                    text: a.as_span().as_str().to_string(),
+                                }
+                            })
+                            .collect();
+
+                        Arg::Dynamic { name, args }
+                    }
                     unknown => panic!("Unknown arg type {unknown:?}"),
                 }
             })
             .collect();
 
-        instr.push(Instruction::Task { name, args });
+        match name.into_inner().next().unwrap().as_rule() {
+            Rule::task => {
+                instr.push(Instruction::Task {
+                    name: args[0].clone(),
+                    args,
+                });
+            }
+            Rule::open => {
+                instr.push(Instruction::Open {
+                    path: args[0].clone(),
+                });
+            }
+            Rule::debug => {
+                instr.push(Instruction::Debug {
+                    text: args[0].clone(),
+                });
+            }
+            unknown => panic!("Unknown instruction type {unknown:?}"),
+        }
     }
 
     instr

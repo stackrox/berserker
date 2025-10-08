@@ -11,11 +11,19 @@ RUN dnf install -y \
     llvm-devel \
     zlib-devel \
     libxml2-devel \
-    libstdc++-static
+    libstdc++-static \
+    # for bpf \
+    clang \
+    kernel-devel \
+    libbpf-devel
 
 ADD ./ /berserker/
 
 WORKDIR /berserker/
+
+RUN make -C bpf
+
+RUN nasm -f elf64 -o stub.o stub.asm && ld -o stub stub.o
 
 RUN cargo fmt --check
 
@@ -24,5 +32,3 @@ RUN cargo clippy -- -D warnings
 RUN cargo build -r
 
 RUN cargo test
-
-RUN nasm -f elf64 -o stub.o stub.asm && ld -o stub stub.o

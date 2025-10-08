@@ -9,8 +9,20 @@ constant = {
   | ASCII_DIGIT*
 }
 
+randomPath = { "random_path" }
+randomString = { "random_string" }
+
+dynamicName = {
+    randomPath
+  | randomString
+}
+
+dynamic = {dynamicName ~ args}
+
+// constant should be the last
 arg = {
-    ident
+    dynamic
+  | ident
   | constant
 }
 
@@ -70,11 +82,13 @@ function = {
 server = { "server" }
 load = { "load" }
 memory = { "memory" }
+profile = { "profile" }
 
 mInstrName = {
     server
   | load
   | memory
+  | profile
 }
 
 machineInstruction = {mInstrName ~ args? ~ ";"}

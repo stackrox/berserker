@@ -13,7 +13,7 @@ use std::{
 
 use std::sync::LazyLock;
 
-use log::{debug, info};
+use log::{debug, log_enabled, Level};
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use rand_distr::Exp;
 
@@ -21,12 +21,18 @@ use llvm::core::*;
 use llvm::execution_engine::*;
 use llvm::target::*;
 use llvm_sys::prelude::*;
-use std::ffi::{c_void, CStr};
+use llvm_sys::LLVMType;
+use std::ffi::{c_void, CStr, CString};
 use std::mem;
 
 use crate::{Worker, WorkerError};
 
 use crate::script::ast::{Arg, Dist, Instruction, Node};
+
+enum RuntimeType {
+    Int,
+    Pointer,
+}
 
 #[derive(Debug, Clone)]
 pub struct ScriptWorker {
@@ -51,12 +57,14 @@ pub unsafe extern "C" fn debug(text: *const i8) -> u64 {
 /// Open a file with create and write permissions and write to it.
 #[no_mangle]
 pub unsafe extern "C" fn open(path: *const i8) -> u64 {
-    let path = unsafe { CStr::from_ptr(path).to_str().unwrap() };
+    //let path = unsafe { CString::from_raw(path as *mut i8) };
+    let path = unsafe { CStr::from_ptr(path) };
+    debug!("Open path {:?}", path);
     let mut file = OpenOptions::new()
         .write(true)
         .create(true)
         .truncate(true)
-        .open(path)
+        .open(path.to_str().unwrap())
         .unwrap();
     file.write_all(b"Test").unwrap();
     0
@@ -101,28 +109,70 @@ pub unsafe extern "C" fn task(name: *const i8, random: bool) -> u64 {
     0
 }
 
+/// # Safety
+///
+/// Return a randomly generated path.
+#[no_mangle]
+pub unsafe extern "C" fn random_path(base: *const i8) -> *const i8 {
+    let base = unsafe { CStr::from_ptr(base).to_string_lossy().into_owned() };
+
+    let uniq: String = rand::thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(7)
+        .map(char::from)
+        .collect();
+
+    let path = CString::new(format!("{base}/{uniq}")).unwrap().into_raw();
+
+    path
+}
+
 pub struct RuntimeFunc {
     name: &'static str,
     func: usize,
+    param_count: u32,
+    param_types: &'static [RuntimeType],
+    return_type: RuntimeType,
 }
 
-pub static RUNTIME: LazyLock<[RuntimeFunc; 4]> = LazyLock::new(|| {
+pub static RUNTIME: LazyLock<[RuntimeFunc; 5]> = LazyLock::new(|| {
     [
+        // workload support
         RuntimeFunc {
             name: "task",
             func: task as usize,
+            param_count: 1,
+            param_types: &[RuntimeType::Pointer],
+            return_type: RuntimeType::Int,
         },
         RuntimeFunc {
             name: "debug",
             func: debug as usize,
+            param_count: 1,
+            param_types: &[RuntimeType::Pointer],
+            return_type: RuntimeType::Int,
         },
         RuntimeFunc {
             name: "open",
             func: open as usize,
+            param_count: 1,
+            param_types: &[RuntimeType::Pointer],
+            return_type: RuntimeType::Int,
         },
         RuntimeFunc {
             name: "ping",
             func: ping as usize,
+            param_count: 1,
+            param_types: &[RuntimeType::Pointer],
+            return_type: RuntimeType::Int,
+        },
+        // dynamic values
+        RuntimeFunc {
+            name: "random_path",
+            func: random_path as usize,
+            param_count: 1,
+            param_types: &[RuntimeType::Pointer],
+            return_type: RuntimeType::Pointer,
         },
     ]
 });
@@ -170,31 +220,36 @@ impl ScriptWorker {
                 ee.assume_init()
             };
 
+            let td = LLVMGetExecutionEngineTargetData(ee);
+
             // get a type for main function
             let i64t = LLVMInt64TypeInContext(context);
-            let td = LLVMGetExecutionEngineTargetData(ee);
             let iptr = LLVMIntPtrTypeInContext(context, td);
-
-            let mut argts = [];
-            let function_type = LLVMFunctionType(
-                i64t,
-                argts.as_mut_ptr(),
-                argts.len() as u32,
-                0,
-            );
 
             for f in &*RUNTIME {
                 if module_runtime.contains_key(f.name) {
                     break;
                 };
 
-                let mut task_argts = [iptr];
+                let mut function_args = f
+                    .param_types
+                    .iter()
+                    .map(|t| match t {
+                        RuntimeType::Pointer => iptr,
+                        RuntimeType::Int => i64t,
+                    })
+                    .collect::<Vec<*mut LLVMType>>();
+
                 let function_type = LLVMFunctionType(
-                    i64t,
-                    task_argts.as_mut_ptr(),
-                    task_argts.len() as u32,
+                    match f.return_type {
+                        RuntimeType::Int => i64t,
+                        RuntimeType::Pointer => iptr,
+                    },
+                    function_args.as_mut_ptr(),
+                    f.param_count,
                     0,
                 );
+
                 let func = LLVMAddFunction(
                     module,
                     format!("{}\0", f.name).into_bytes().as_ptr() as *const _,
@@ -204,6 +259,14 @@ impl ScriptWorker {
                 module_runtime
                     .insert(f.name.to_string(), (func, function_type));
             }
+
+            let mut argts = [];
+            let function_type = LLVMFunctionType(
+                i64t,
+                argts.as_mut_ptr(),
+                argts.len() as u32,
+                0,
+            );
 
             // add it to our module
             let function = LLVMAddFunction(
@@ -240,11 +303,10 @@ impl ScriptWorker {
 
             for instr in instructions {
                 match instr {
-                    Instruction::Task { name, args } => {
-                        let task_name = args[0].clone();
+                    Instruction::Task { name, args: _ } => {
                         let mut arg_ptr;
 
-                        match task_name {
+                        match name {
                             Arg::Const { text } => {
                                 arg_ptr = LLVMBuildGlobalString(
                                     builder,
@@ -255,10 +317,34 @@ impl ScriptWorker {
                             Arg::Var { name } => {
                                 arg_ptr = *module_state.get(&name).unwrap();
                             }
+                            Arg::Dynamic { name, args } => {
+                                let (func, func_type) =
+                                    module_runtime.get(&name).unwrap();
+
+                                let text = match &args[0] {
+                                    Arg::Const { text } => text,
+                                    unknown => panic!("Unknown dynamic variable argument: {unknown:?}"),
+                                };
+
+                                let mut helper_ptr = LLVMBuildGlobalString(
+                                    builder,
+                                    format!("{text}\0").as_ptr() as *const _,
+                                    c"const".as_ptr() as *const _,
+                                );
+
+                                arg_ptr = LLVMBuildCall2(
+                                    builder,
+                                    *func_type,
+                                    *func,
+                                    &mut helper_ptr,
+                                    1,
+                                    c"{name}".as_ptr() as *const _,
+                                );
+                            }
                         }
 
                         let (func, func_type) =
-                            module_runtime.get(&name).unwrap();
+                            module_runtime.get("task").unwrap();
 
                         LLVMBuildCall2(
                             builder,
@@ -269,7 +355,109 @@ impl ScriptWorker {
                             c"task".as_ptr() as *const _,
                         );
                     }
-                    unknown => panic!("Unknown instruction: {unknown:?}"),
+
+                    Instruction::Open { path } => {
+                        let mut arg_ptr;
+
+                        match path {
+                            Arg::Const { text } => {
+                                arg_ptr = LLVMBuildGlobalString(
+                                    builder,
+                                    format!("{text}\0").as_ptr() as *const _,
+                                    c"const".as_ptr() as *const _,
+                                );
+                            }
+                            Arg::Var { name } => {
+                                arg_ptr = *module_state.get(&name).unwrap();
+                            }
+                            Arg::Dynamic { name, args } => {
+                                let (func, func_type) =
+                                    module_runtime.get(&name).unwrap();
+
+                                let module_func = LLVMGetNamedFunction(
+                                    module,
+                                    format!("{name}\0").into_bytes().as_ptr()
+                                        as *const _,
+                                );
+
+                                let runtime_func = &RUNTIME
+                                    .iter()
+                                    .find(|f| f.name == name)
+                                    .unwrap();
+
+                                debug!("Add mapping to {:?}", name);
+                                LLVMAddGlobalMapping(
+                                    ee,
+                                    module_func,
+                                    runtime_func.func as *mut c_void,
+                                );
+
+                                let text = match &args[0] {
+                                    Arg::Const { text } => text,
+                                    unknown => panic!("Unknown dynamic variable argument: {unknown:?}"),
+                                };
+
+                                let mut helper_ptr = LLVMBuildGlobalString(
+                                    builder,
+                                    format!("{text}\0").as_ptr() as *const _,
+                                    c"const".as_ptr() as *const _,
+                                );
+
+                                arg_ptr = LLVMBuildCall2(
+                                    builder,
+                                    *func_type,
+                                    *func,
+                                    &mut helper_ptr,
+                                    1,
+                                    format!("{name}\0").as_ptr() as *const _,
+                                );
+                            }
+                        }
+
+                        let (func, func_type) =
+                            module_runtime.get("open").unwrap();
+
+                        LLVMBuildCall2(
+                            builder,
+                            *func_type,
+                            *func,
+                            &mut arg_ptr,
+                            1,
+                            c"open".as_ptr() as *const _,
+                        );
+                    }
+
+                    Instruction::Debug { text } => {
+                        let mut arg_ptr;
+
+                        match text {
+                            Arg::Const { text } => {
+                                arg_ptr = LLVMBuildGlobalString(
+                                    builder,
+                                    format!("{text}\0").as_ptr() as *const _,
+                                    c"const".as_ptr() as *const _,
+                                );
+                            }
+                            Arg::Var { name } => {
+                                arg_ptr = *module_state.get(&name).unwrap();
+                            }
+                            Arg::Dynamic { name, args: _ } => {
+                                arg_ptr = *module_state.get(&name).unwrap();
+                            }
+                        }
+
+                        let (func, func_type) =
+                            module_runtime.get("debug").unwrap();
+
+                        LLVMBuildCall2(
+                            builder,
+                            *func_type,
+                            *func,
+                            &mut arg_ptr,
+                            1,
+                            c"debug".as_ptr() as *const _,
+                        );
+                    }
                 }
             }
 
@@ -278,8 +466,11 @@ impl ScriptWorker {
             LLVMBuildRet(builder, ret);
             // done building
             LLVMDisposeBuilder(builder);
-            // Dump the module as IR to stdout.
-            LLVMDumpModule(module);
+
+            if log_enabled!(Level::Debug) {
+                // Dump the module as IR to stdout.
+                LLVMDumpModule(module);
+            }
 
             let Node::Work {
                 name: _,
@@ -292,28 +483,27 @@ impl ScriptWorker {
             };
 
             for instr in instructions {
-                match instr {
-                    Instruction::Task { name, args: _ } => {
-                        let module_func = LLVMGetNamedFunction(
-                            module,
-                            format!("{name}\0").into_bytes().as_ptr()
-                                as *const _,
-                        );
+                let name = match instr {
+                    Instruction::Task { .. } => "task",
+                    Instruction::Open { .. } => "open",
+                    Instruction::Debug { .. } => "debug",
+                    //unknown => panic!("Unknown instruction: {unknown:?}"),
+                };
 
-                        let runtime_func = &RUNTIME
-                            .iter()
-                            .find(|f| f.name == name.as_str())
-                            .unwrap();
+                let module_func = LLVMGetNamedFunction(
+                    module,
+                    format!("{name}\0").into_bytes().as_ptr() as *const _,
+                );
 
-                        debug!("Add mapping to {:?}", name);
-                        LLVMAddGlobalMapping(
-                            ee,
-                            module_func,
-                            runtime_func.func as *mut c_void,
-                        );
-                    }
-                    unknown => panic!("Unknown instruction: {unknown:?}"),
-                }
+                let runtime_func =
+                    &RUNTIME.iter().find(|f| f.name == name).unwrap();
+
+                debug!("Add mapping to {:?}", name);
+                LLVMAddGlobalMapping(
+                    ee,
+                    module_func,
+                    runtime_func.func as *mut c_void,
+                );
             }
 
             let addr = LLVMGetFunctionAddress(ee, c"main".as_ptr() as *const _);
@@ -353,7 +543,7 @@ impl Worker for ScriptWorker {
 
                     let interval: f64 =
                         thread_rng().sample(Exp::new(rate).unwrap());
-                    info!(
+                    debug!(
                         "Interval {}, rounded {}",
                         interval,
                         (interval * 1000.0).round() as u64,
