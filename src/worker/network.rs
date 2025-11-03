@@ -285,7 +285,7 @@ impl NetworkWorker {
                         // reset the timer
                         send_timer = SystemTime::now();
 
-                        let response = format!("hello {}\n", i);
+                        let response = format!("hello {i}\n");
                         let binary = response.as_bytes();
                         trace!(
                             "sending request from idx {} addr {}, data {:?}",

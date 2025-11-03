@@ -19,47 +19,125 @@ extern crate core_affinity;
 
 use config::Config;
 use core_affinity::CoreId;
+use docopt::Docopt;
 use fork::{fork, Fork};
 use itertools::iproduct;
+use itertools::{Either, Itertools};
+use nix::errno::Errno;
 use nix::sys::signal::{kill, Signal};
 use nix::sys::wait::waitpid;
 use nix::unistd::Pid;
+use serde::Deserialize;
 use std::time::SystemTime;
-use std::{env, thread, time};
+use std::{thread, time};
 
-use berserker::{worker::new_worker, WorkloadConfig};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
-fn main() {
-    let args: Vec<String> = env::args().collect();
-    let default_config = String::from("workload.toml");
-    let config_path = &args.get(1).unwrap_or(&default_config);
-    let duration_timer = SystemTime::now();
+use berserker::machine::apply;
+use berserker::script::{ast::Node, parser::parse_instructions};
+use berserker::{
+    worker::new_script_worker, worker::new_worker, WorkloadConfig,
+};
 
-    let config = Config::builder()
-        // Add in `./Settings.toml`
-        .add_source(
-            config::File::with_name("/etc/berserker/workload.toml")
-                .required(false),
-        )
-        .add_source(config::File::with_name(config_path).required(false))
-        // Add in settings from the environment (with a prefix of APP)
-        // Eg.. `BERSERKER__WORKLOAD__ARRIVAL_RATE=1` would set the `arrival_rate` key
-        .add_source(
-            config::Environment::with_prefix("BERSERKER")
-                .try_parsing(true)
-                .separator("__"),
-        )
-        .build()
-        .unwrap()
-        .try_deserialize::<WorkloadConfig>()
-        .unwrap();
+const USAGE: &str = "
+Usage: berserker [-c CONFIG] [-f SCRIPT]
 
+Options:
+    -f, --file SCRIPT       File with instructions to execute.
+                            Takes presedence over the config file.
+    -c, --config CONFIG     File containing global and workload specific
+                            configuration.
+";
+
+#[derive(Debug, Deserialize)]
+struct Args {
+    flag_c: Option<String>,
+    flag_f: Option<String>,
+}
+
+fn run_script(script_path: String) -> Vec<(i32, u64)> {
+    let mut handles = vec![];
+    info!("Loading script: {:?}", script_path);
+
+    let ast: Vec<Node> =
+        parse_instructions(&std::fs::read_to_string(script_path).unwrap())
+            .unwrap();
+
+    let (machine, works): (Vec<_>, Vec<_>) =
+        ast.iter().partition_map(|node| match node {
+            Node::Work { .. } => Either::Right(node),
+            Node::Machine { .. } => Either::Left(node),
+        });
+
+    if let Some(m) = machine.into_iter().next() {
+        let Node::Machine { m_instructions } = m.clone() else {
+            unreachable!()
+        };
+
+        for instr in m_instructions {
+            //thread::spawn(move || apply(instr.clone()));
+            let _ = apply(instr.clone());
+        }
+    };
+
+    works.into_iter().for_each(|node| {
+        debug!("AST NODE: {:?}", node);
+
+        let Node::Work {
+            name: _,
+            args,
+            instructions: _,
+            dist: _,
+        } = node
+        else {
+            unreachable!()
+        };
+
+        let workers: u32 = args
+            .get("workers")
+            .cloned()
+            .unwrap_or(String::from("0"))
+            .parse()
+            .unwrap();
+
+        let duration: u64 = args
+            .get("duration")
+            .cloned()
+            .unwrap_or(String::from("0"))
+            .parse()
+            .unwrap();
+
+        let h: Vec<_> = (0..workers)
+            .map(|_| {
+                let worker = new_script_worker(node.clone());
+
+                match fork() {
+                    Ok(Fork::Parent(child)) => {
+                        info!("Child {}", child);
+                        Some((child, duration))
+                    }
+                    Ok(Fork::Child) => {
+                        worker.run_payload().unwrap();
+                        None
+                    }
+                    Err(e) => {
+                        warn!("Failed: {e:?}");
+                        None
+                    }
+                }
+            })
+            .collect();
+
+        handles.extend(h);
+    });
+
+    handles.iter().filter_map(|i| *i).collect()
+}
+
+fn run_workload(config: WorkloadConfig) -> Vec<(i32, u64)> {
     let mut lower = 1024;
     let mut upper = 1024;
-
-    env_logger::init();
-
-    info!("Config: {:?}", config);
 
     let core_ids: Vec<CoreId> = if config.per_core {
         // Retrieve the IDs of all active CPU cores.
@@ -76,7 +154,7 @@ fn main() {
             match fork() {
                 Ok(Fork::Parent(child)) => {
                     info!("Child {}", child);
-                    Some(child)
+                    Some((child, config.duration))
                 }
                 Ok(Fork::Child) => {
                     if config.per_core {
@@ -96,31 +174,103 @@ fn main() {
         .collect();
 
     info!("In total: {}", upper);
+    handles.iter().filter_map(|i| *i).collect()
+}
+
+fn main() {
+    env_logger::init();
+
+    let terminating = Arc::new(AtomicBool::new(false));
+    signal_hook::flag::register(
+        signal_hook::consts::SIGTERM,
+        Arc::clone(&terminating),
+    )
+    .unwrap();
+
+    let args: Args = Docopt::new(USAGE)
+        .and_then(|d| d.deserialize())
+        .unwrap_or_else(|e| e.exit());
+
+    debug!("ARGS {:?}", args);
+
+    let duration_timer = SystemTime::now();
+    let script_path = args.flag_f;
+
+    let handles = match script_path {
+        Some(path) => run_script(path),
+        None => {
+            let default_config = String::from("workload.toml");
+            let config_path = args.flag_c.unwrap_or(default_config);
+
+            let config = Config::builder()
+                // Add in `./Settings.toml`
+                .add_source(
+                    config::File::with_name("/etc/berserker/workload.toml")
+                        .required(false),
+                )
+                .add_source(
+                    config::File::with_name(config_path.as_str())
+                        .required(false),
+                )
+                // Add in settings from the environment (with a prefix of APP)
+                // Eg.. `BERSERKER__WORKLOAD__ARRIVAL_RATE=1` would set the `arrival_rate` key
+                .add_source(
+                    config::Environment::with_prefix("BERSERKER")
+                        .try_parsing(true)
+                        .separator("__"),
+                )
+                .build()
+                .unwrap()
+                .try_deserialize::<WorkloadConfig>()
+                .unwrap();
+
+            info!("Config: {:?}", config);
+            run_workload(config)
+        }
+    };
 
     let processes = &handles.clone();
 
     thread::scope(|s| {
-        if config.duration != 0 {
-            // Spin a watcher thread
-            s.spawn(move || loop {
-                thread::sleep(time::Duration::from_secs(1));
-                let elapsed = duration_timer.elapsed().unwrap().as_secs();
+        // Spin a watcher thread
+        s.spawn(move || loop {
+            thread::sleep(time::Duration::from_secs(1));
+            let elapsed = duration_timer.elapsed().unwrap().as_secs();
 
-                if elapsed > config.duration {
-                    for handle in processes.iter().flatten() {
-                        info!("Terminating: {}", *handle);
-                        let _ = kill(Pid::from_raw(*handle), Signal::SIGTERM);
-                    }
+            // Find all processes with expired duration. If we've received
+            // SIGTERM, get all processes.
+            let expired = processes
+                .iter()
+                .filter(|(_, duration)| {
+                    (*duration > 0 && *duration < elapsed)
+                        || terminating.load(Ordering::Relaxed)
+                })
+                .collect::<Vec<_>>();
 
-                    break;
-                }
-            });
-        }
+            for (handle, _) in &expired {
+                info!("Terminating: {}", *handle);
+                let _ = kill(Pid::from_raw(*handle), Signal::SIGKILL);
+            }
+
+            if expired.len() == processes.len() {
+                break;
+            }
+        });
 
         s.spawn(move || {
-            for handle in processes.iter().flatten() {
-                info!("waitpid: {}", *handle);
-                waitpid(Pid::from_raw(*handle), None).unwrap();
+            for (handle, _) in handles {
+                info!("waitpid: {}", handle);
+                match waitpid(Pid::from_raw(handle), None) {
+                    Ok(_) => {
+                        info!("{handle:?} stopped")
+                    }
+                    Err(Errno::ECHILD) => {
+                        info!("no process {handle:?} found")
+                    }
+                    Err(e) => {
+                        panic!("cannot wait for {handle:?}: {e:?}")
+                    }
+                };
             }
         });
     });
