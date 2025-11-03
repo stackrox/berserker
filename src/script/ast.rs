@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Arg {
     Const { text: String },
     Var { name: String },
     Dynamic { name: String, args: Vec<Arg> },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Instruction {
     Task { name: Arg, args: Vec<Arg> },
     Open { path: Arg },
@@ -20,7 +20,7 @@ pub enum MachineInstruction {
     Profile { target: String },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Dist {
     Exp { rate: f64 },
 }

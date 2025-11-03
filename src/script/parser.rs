@@ -223,3 +223,122 @@ fn build_ast_from_dist(pair: pest::iterators::Pair<Rule>) -> Dist {
         unknown => panic!("Unknown dist: {unknown:?}"),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Helper to verify repeated unit
+    fn test_repeated(node: Node) {
+        let Node::Work {
+            ref name,
+            ref args,
+            ref instructions,
+            ref dist,
+        } = node
+        else {
+            unreachable!()
+        };
+
+        assert_eq!(name, "repeated");
+
+        assert_eq!(args.len(), 2);
+        assert_eq!(args.get("workers").unwrap(), "10");
+        assert_eq!(args.get("duration").unwrap(), "100");
+
+        assert_eq!(instructions.len(), 1);
+
+        assert_eq!(
+            instructions[0],
+            Instruction::Open {
+                path: Arg::Const {
+                    text: "/tmp/test".to_string()
+                }
+            }
+        );
+
+        let dist_value = dist.clone().unwrap();
+
+        assert_eq!(dist_value, Dist::Exp { rate: 100.0 });
+    }
+
+    // Helper to verify random unit
+    fn test_random(node: Node) {
+        let Node::Work {
+            ref name,
+            ref args,
+            ref instructions,
+            ref dist,
+        } = node
+        else {
+            unreachable!()
+        };
+
+        assert_eq!(name, "random");
+
+        assert_eq!(args.len(), 2);
+        assert_eq!(args.get("workers").unwrap(), "10");
+        assert_eq!(args.get("duration").unwrap(), "100");
+
+        assert_eq!(instructions.len(), 1);
+
+        assert_eq!(
+            instructions[0],
+            Instruction::Open {
+                path: Arg::Dynamic {
+                    name: "random_path".to_string(),
+                    args: vec![Arg::Const {
+                        text: "/tmp".to_string()
+                    }],
+                }
+            }
+        );
+
+        let dist_value = dist.clone().unwrap();
+
+        assert_eq!(dist_value, Dist::Exp { rate: 100.0 });
+    }
+
+    #[test]
+    fn test_single_work_unit() {
+        let input = r#"
+            // open the same file over and over
+            repeated (workers = 10, duration = 100) {
+              open("/tmp/test");
+            } : exp {
+              rate = 100.0;
+            }
+        "#;
+
+        let ast: Vec<Node> = parse_instructions(input).unwrap();
+        assert_eq!(ast.len(), 1);
+
+        test_repeated(ast[0].clone());
+    }
+
+    #[test]
+    fn test_multiple_work_units() {
+        let input = r#"
+            // open lots of random files under
+            // a specified directory
+            random (workers = 10, duration = 100) {
+              open(random_path("/tmp"));
+            } : exp {
+              rate = 100.0;
+            }
+
+            // open the same file over and over
+            repeated (workers = 10, duration = 100) {
+              open("/tmp/test");
+            } : exp {
+              rate = 100.0;
+            }
+        "#;
+
+        let ast: Vec<Node> = parse_instructions(input).unwrap();
+        assert_eq!(ast.len(), 2);
+
+        test_random(ast[0].clone());
+        test_repeated(ast[1].clone());
+    }
+}
