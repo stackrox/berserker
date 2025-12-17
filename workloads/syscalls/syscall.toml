@@ -1,0 +1,22 @@
+# An amount of time for workload payload to run before restarting.
+restart_interval = 10
+# Controls per-core mode to handle number of workers. If per-core mode
+# is enabled, `workers` will be treated as a number of workers per CPU
+# core. Otherwise it will be treated as a total number of workers.
+per_core = false
+# How many workers to spin, depending on `per_core` in either per-core
+# or total mode.
+workers = 1
+# For how long to run the worker. Default value is zero, meaning no limit.
+duration = 0
+
+[workload]
+type = "syscalls"
+# Run without any delay between syscalls.
+tight_loop = false
+# How often to invoke a syscall. Parameter of exponential distribution.
+arrival_rate = 10.0
+# Syscall number to invoke.
+syscall_nr = 162
+# Arguments for syscall in format "arg1=value1,arg2=value2". Not all arguments can be parsed.
+syscall_args = ""

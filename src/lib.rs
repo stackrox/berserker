@@ -1,13 +1,13 @@
 use core_affinity::CoreId;
-use serde::Deserialize;
-use std::{fmt::Display, net::Ipv4Addr};
+use serde::{Deserialize, Deserializer};
+use std::{collections::HashMap, fmt::Display, net::Ipv4Addr, str::FromStr};
 use syscalls::Sysno;
 
 pub mod worker;
 
 /// Main workload configuration, contains general bits for all types of
 /// workloads plus workload specific data.
-#[derive(Debug, Copy, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct WorkloadConfig {
     /// An amount of time for workload payload to run before restarting.
     pub restart_interval: u64,
@@ -55,9 +55,51 @@ fn default_syscalls_syscall_nr() -> u32 {
     Sysno::getpid as u32
 }
 
+fn default_iouring_iouring_nr() -> u8 {
+    io_uring::opcode::OpenAt::CODE
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ArgsMap(HashMap<String, String>);
+
+impl ArgsMap {
+    fn new() -> Self {
+        Self(HashMap::new())
+    }
+
+    fn get<T: FromStr>(&self, name: &str, default: T) -> T {
+        if let Some(arg) = self.0.get(name) {
+            arg.parse().unwrap_or(default)
+        } else {
+            default
+        }
+    }
+}
+
+fn deserialize_args<'de, D>(deserializer: D) -> Result<ArgsMap, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    if let Ok(map) = String::deserialize(deserializer)?
+        .split(',')
+        .filter(|x| !x.is_empty())
+        .map(|arg| match arg.split_once('=') {
+            Some((key, value)) => Ok((key.to_string(), value.to_string())),
+            None => Err(serde::de::Error::custom(format!(
+                "invalid syscall arguments format: {arg}"
+            ))),
+        })
+        .collect::<Result<HashMap<_, _>, D::Error>>()
+    {
+        Ok(ArgsMap(map))
+    } else {
+        Err(serde::de::Error::custom("invalid syscall arguments format"))
+    }
+}
+
 /// Workload specific configuration, contains one enum value for each
 /// workload type.
-#[derive(Debug, Copy, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "lowercase", tag = "type")]
 pub enum Workload {
     /// How to listen on ports.
@@ -92,6 +134,37 @@ pub enum Workload {
         /// Which syscall to trigger
         #[serde(default = "default_syscalls_syscall_nr")]
         syscall_nr: u32,
+
+        /// Arguments for syscall in format "arg1=value1,arg2=value2"
+        #[serde(
+            deserialize_with = "deserialize_args",
+            default = "ArgsMap::new"
+        )]
+        syscall_args: ArgsMap,
+    },
+
+    /// How to invoke syscalls
+    IOUring {
+        /// How often to invoke a io_uring events.
+        #[serde(default = "default_syscalls_arrival_rate")]
+        arrival_rate: f64,
+
+        /// Run in a tight loop
+        #[serde(default = "default_syscalls_tight_loop")]
+        tight_loop: bool,
+
+        /// Number of io uring event to trigger
+        /// List of io_uring events can be found at https://github.com/tokio-rs/io-uring/blob/master/src/sys/sys_x86_64.rs
+        /// or at https://github.com/torvalds/linux/blob/b320789d6883cc00ac78ce83bccbfe7ed58afcf0/include/uapi/linux/io_uring.h
+        #[serde(default = "default_iouring_iouring_nr")]
+        iouring_nr: u8,
+
+        /// Arguments for io_uring in format "arg1=value1,arg2=value2"
+        #[serde(
+            deserialize_with = "deserialize_args",
+            default = "ArgsMap::new"
+        )]
+        iouring_args: ArgsMap,
     },
 
     /// How to open network connections
@@ -186,11 +259,17 @@ pub enum Distribution {
 #[derive(Debug)]
 pub enum WorkerError {
     Internal,
+    InternalWithMessage(String),
 }
 
 impl Display for WorkerError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "worker error found")
+        match self {
+            WorkerError::Internal => write!(f, "worker error found"),
+            WorkerError::InternalWithMessage(msg) => {
+                write!(f, "worker error: {}", msg)
+            }
+        }
     }
 }
 
@@ -356,12 +435,7 @@ mod tests {
             ..
         } = config;
         assert_eq!(restart_interval, 10);
-        if let Workload::Syscalls {
-            arrival_rate,
-            tight_loop,
-            syscall_nr,
-        } = workload
-        {
+        if let Workload::Syscalls { arrival_rate, .. } = workload {
             assert_eq!(arrival_rate, 10.0);
         } else {
             panic!("wrong workload type found");
