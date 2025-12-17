@@ -1,15 +1,15 @@
 use std::{fmt::Display, process::Command, thread, time};
 
 use core_affinity::CoreId;
-use fork::{fork, Fork};
+use fork::{Fork, fork};
 use log::{info, warn};
 use nix::{sys::wait::waitpid, unistd::Pid};
-use rand::{distributions::Alphanumeric, thread_rng, Rng};
+use rand::{Rng, distributions::Alphanumeric, thread_rng};
 use rand_distr::Exp;
 
 use crate::{BaseConfig, Worker, WorkerError, Workload, WorkloadConfig};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct ProcessesWorker {
     config: BaseConfig,
     workload: WorkloadConfig,
@@ -77,31 +77,37 @@ impl Worker for ProcessesWorker {
             unreachable!()
         };
 
-        loop {
-            let lifetime: f64 =
-                thread_rng().sample(Exp::new(departure_rate).unwrap());
+        thread::scope(|s| {
+            loop {
+                let lifetime: f64 =
+                    thread_rng().sample(Exp::new(departure_rate).unwrap());
 
-            let worker = *self;
-            thread::spawn(move || {
-                worker.spawn_process((lifetime * 1000.0).round() as u64)
-            });
+                let worker = self;
 
-            let interval: f64 =
-                thread_rng().sample(Exp::new(arrival_rate).unwrap());
-            info!(
-                "{}-{}: Interval {}, rounded {}, lifetime {}, rounded {}",
-                self.config.cpu.id,
-                self.config.process,
-                interval,
-                (interval * 1000.0).round() as u64,
-                lifetime,
-                (lifetime * 1000.0).round() as u64
-            );
-            thread::sleep(time::Duration::from_millis(
-                (interval * 1000.0).round() as u64,
-            ));
-            info!("{}-{}: Continue", self.config.cpu.id, self.config.process);
-        }
+                s.spawn(move || {
+                    worker.spawn_process((lifetime * 1000.0).round() as u64)
+                });
+
+                let interval: f64 =
+                    thread_rng().sample(Exp::new(arrival_rate).unwrap());
+                info!(
+                    "{}-{}: Interval {}, rounded {}, lifetime {}, rounded {}",
+                    self.config.cpu.id,
+                    self.config.process,
+                    interval,
+                    (interval * 1000.0).round() as u64,
+                    lifetime,
+                    (lifetime * 1000.0).round() as u64
+                );
+                thread::sleep(time::Duration::from_millis(
+                    (interval * 1000.0).round() as u64,
+                ));
+                info!(
+                    "{}-{}: Continue",
+                    self.config.cpu.id, self.config.process
+                );
+            }
+        })
     }
 }
 

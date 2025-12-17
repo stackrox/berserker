@@ -1,6 +1,6 @@
 use core_affinity::CoreId;
 use log::{debug, info, trace};
-use rand::{thread_rng, Rng};
+use rand::{Rng, thread_rng};
 use rand_distr::Exp;
 use std::collections::HashMap;
 use std::os::unix::io::AsRawFd;
@@ -8,7 +8,7 @@ use std::str;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{
     fmt::Display,
-    io::{prelude::*, BufReader},
+    io::{BufReader, prelude::*},
     net::TcpListener,
     thread,
 };
@@ -17,10 +17,10 @@ use crate::{BaseConfig, Worker, WorkerError, Workload, WorkloadConfig};
 
 use smoltcp::iface::{Config, Interface, SocketSet};
 use smoltcp::phy::{
-    wait as phy_wait, Device, FaultInjector, Medium, Tracer, TunTapInterface,
+    Device, FaultInjector, Medium, Tracer, TunTapInterface, wait as phy_wait,
 };
-use smoltcp::socket::tcp;
 use smoltcp::socket::AnySocket;
+use smoltcp::socket::tcp;
 use smoltcp::time::Instant;
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
 
@@ -61,31 +61,33 @@ impl NetworkWorker {
             // through streams and replies. This way the connections will have
             // high latency, but for the purpose of networking workload it
             // doesn't matter.
-            thread::spawn(move || loop {
-                let mut buf_reader = BufReader::new(&stream);
-                let mut buffer = String::new();
+            thread::spawn(move || {
+                loop {
+                    let mut buf_reader = BufReader::new(&stream);
+                    let mut buffer = String::new();
 
-                match buf_reader.read_line(&mut buffer) {
-                    Ok(0) => {
-                        // EOF, exit
-                        break;
-                    }
-                    Ok(_n) => {
-                        trace!("Received {:?}", buffer);
+                    match buf_reader.read_line(&mut buffer) {
+                        Ok(0) => {
+                            // EOF, exit
+                            break;
+                        }
+                        Ok(_n) => {
+                            trace!("Received {:?}", buffer);
 
-                        let response = "hello\n";
-                        match stream.write_all(response.as_bytes()) {
-                            Ok(_) => {
-                                // Response is sent, handle the next one
-                            }
-                            Err(e) => {
-                                trace!("ERROR: sending response, {}", e);
-                                break;
+                            let response = "hello\n";
+                            match stream.write_all(response.as_bytes()) {
+                                Ok(_) => {
+                                    // Response is sent, handle the next one
+                                }
+                                Err(e) => {
+                                    trace!("ERROR: sending response, {}", e);
+                                    break;
+                                }
                             }
                         }
-                    }
-                    Err(e) => {
-                        trace!("ERROR: reading a line, {}", e)
+                        Err(e) => {
+                            trace!("ERROR: reading a line, {}", e)
+                        }
                     }
                 }
             });
