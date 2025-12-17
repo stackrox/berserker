@@ -1,8 +1,11 @@
 use core_affinity::CoreId;
-use rand::{thread_rng, Rng};
+use rand::{Rng, thread_rng};
 use rand_distr::{Uniform, Zipf};
 
-use crate::{Distribution, Worker, Workload, WorkloadConfig};
+use crate::{
+    Distribution, Worker, Workload, WorkloadConfig,
+    worker::io_uring::IOUringWorker,
+};
 
 use self::{
     bpf::BpfWorker, endpoints::EndpointWorker, network::NetworkWorker,
@@ -11,6 +14,7 @@ use self::{
 
 pub mod bpf;
 pub mod endpoints;
+pub mod io_uring;
 pub mod network;
 pub mod processes;
 pub mod syscalls;
@@ -60,6 +64,9 @@ pub fn new_worker(
         }
         Workload::Bpf { .. } => {
             Box::new(BpfWorker::new(workload, cpu, process))
+        }
+        Workload::IOUring { .. } => {
+            Box::new(IOUringWorker::new(workload, cpu, process))
         }
     }
 }

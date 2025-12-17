@@ -1,0 +1,22 @@
+# An amount of time for workload payload to run before restarting.
+restart_interval = 10
+# Controls per-core mode to handle number of workers. If per-core mode
+# is enabled, `workers` will be treated as a number of workers per CPU
+# core. Otherwise it will be treated as a total number of workers.
+per_core = false
+# How many workers to spin, depending on `per_core` in either per-core
+# or total mode.
+workers = 1
+# For how long to run the worker. Default value is zero, meaning no limit.
+duration = 0
+
+[workload]
+type = "iouring"
+# How often to invoke a io_uring call. Parameter of exponential distribution.
+arrival_rate = 0.001
+# io_uring number to invoke. List can be found
+# at https://github.com/tokio-rs/io-uring/blob/master/src/sys/sys_x86_64.rs
+# or at https://github.com/torvalds/linux/blob/master/include/uapi/linux/io_uring.h
+iouring_nr = 36
+# Arguments for io_uring call in format "arg1=value1,arg2=value2". Not all arguments can be parsed.
+iouring_args = ""
