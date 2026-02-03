@@ -1,0 +1,9 @@
+restart_interval = 10
+per_core = false
+workers = 1
+
+[workload]
+type = "syscalls"
+arrival_rate = 0.001
+syscall_nr = 43
+syscall_args = "" # will be called with default parameters

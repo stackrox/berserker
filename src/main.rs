@@ -19,15 +19,15 @@ extern crate core_affinity;
 
 use config::Config;
 use core_affinity::CoreId;
-use fork::{fork, Fork};
+use fork::{Fork, fork};
 use itertools::iproduct;
-use nix::sys::signal::{kill, Signal};
+use nix::sys::signal::{Signal, kill};
 use nix::sys::wait::waitpid;
 use nix::unistd::Pid;
 use std::time::SystemTime;
 use std::{env, thread, time};
 
-use berserker::{worker::new_worker, WorkloadConfig};
+use berserker::{WorkloadConfig, worker::new_worker};
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -70,8 +70,13 @@ fn main() {
 
     let handles: Vec<_> = iproduct!(core_ids.into_iter(), 0..config.workers)
         .map(|(cpu, process)| {
-            let worker =
-                new_worker(config, cpu, process, &mut lower, &mut upper);
+            let worker = new_worker(
+                config.clone(),
+                cpu,
+                process,
+                &mut lower,
+                &mut upper,
+            );
 
             match fork() {
                 Ok(Fork::Parent(child)) => {
@@ -102,17 +107,20 @@ fn main() {
     thread::scope(|s| {
         if config.duration != 0 {
             // Spin a watcher thread
-            s.spawn(move || loop {
-                thread::sleep(time::Duration::from_secs(1));
-                let elapsed = duration_timer.elapsed().unwrap().as_secs();
+            s.spawn(move || {
+                loop {
+                    thread::sleep(time::Duration::from_secs(1));
+                    let elapsed = duration_timer.elapsed().unwrap().as_secs();
 
-                if elapsed > config.duration {
-                    for handle in processes.iter().flatten() {
-                        info!("Terminating: {}", *handle);
-                        let _ = kill(Pid::from_raw(*handle), Signal::SIGTERM);
+                    if elapsed > config.duration {
+                        for handle in processes.iter().flatten() {
+                            info!("Terminating: {}", *handle);
+                            let _ =
+                                kill(Pid::from_raw(*handle), Signal::SIGTERM);
+                        }
+
+                        break;
                     }
-
-                    break;
                 }
             });
         }

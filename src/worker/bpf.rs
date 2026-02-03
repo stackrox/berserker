@@ -1,6 +1,6 @@
 use std::{
     cmp,
-    ffi::{c_char, CString},
+    ffi::{CString, c_char},
     fmt::Display,
     mem, slice, thread,
 };
@@ -17,7 +17,7 @@ use aya_obj::generated::{
 
 use crate::{BaseConfig, Worker, WorkerError, Workload, WorkloadConfig};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct BpfWorker {
     config: BaseConfig,
     workload: WorkloadConfig,

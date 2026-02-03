@@ -1,0 +1,9 @@
+restart_interval = 10
+per_core = false
+workers = 1
+
+[workload]
+type = "syscalls"
+arrival_rate = 0.001
+syscall_nr = 2
+syscall_args = "pathname=/tmp,flags=0,mode=0"
