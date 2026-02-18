@@ -1,0 +1,23 @@
+#include <linux/socket.h>
+#include <linux/in.h>
+
+t:syscalls:sys_enter_execve /comm == "berserker"/
+{
+    printf("exec %s\n", str(args->filename));
+}
+
+t:syscalls:sys_enter_openat /comm == "berserker"/ {
+    printf("openat %s\n", str(args->filename));
+}
+
+t:syscalls:sys_enter_connect /comm == "berserker"/ {
+	$addr_in = (struct sockaddr_in *)args->uservaddr;
+	$addr = ntop($addr_in->sin_addr.s_addr);
+	printf("connect %s\n", $addr);
+}
+
+t:syscalls:sys_enter_sendto /comm == "berserker"/ {
+	$addr_in = (struct sockaddr_in *)args->addr;
+	$addr = ntop($addr_in->sin_addr.s_addr);
+	printf("sendto %s\n", $addr);
+}
