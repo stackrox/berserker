@@ -1,0 +1,20 @@
+machine {
+  server(8080);
+  path("/tmp/tests");
+}
+
+main (workers = 1) {
+  debug("run task stub");
+  task(stub);
+
+  debug("open file /tmp/tests/test");
+  open("/tmp/tests/test");
+
+  debug("open random file under /tmp/tests/");
+  open(random_path("/tmp/tests"));
+
+  debug("ping server");
+  ping("127.0.0.1:8080");
+} : exp {
+  rate = 10.0;
+}

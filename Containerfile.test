@@ -1,0 +1,14 @@
+FROM berserker:latest
+
+RUN dnf install -y \
+    which \
+    bpftrace \
+    bpftool \
+    procps-ng
+
+# Test will require stub binary to be available
+ENV PATH="${PATH}:/berserker:/usr/local/bin"
+
+ADD ./tests /tests/
+
+ENTRYPOINT ["/tests/entrypoint.sh"]
