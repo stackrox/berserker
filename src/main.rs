@@ -38,6 +38,7 @@ use berserker::{
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use berserker::machine::apply;
 use berserker::script::{
     ast::Node, parser::parse_instructions, rules::apply_rules,
 };
@@ -71,6 +72,16 @@ fn run_script(script_path: String) -> Vec<(i32, u64)> {
             Node::Work { .. } => Either::Right(node),
             Node::Machine { .. } => Either::Left(node),
         });
+
+    if let Some(m) = machine.into_iter().next() {
+        let Node::Machine { m_instructions } = m.clone() else {
+            unreachable!()
+        };
+
+        for instr in m_instructions {
+            thread::spawn(move || apply(instr.clone()));
+        }
+    };
 
     let works = apply_rules(works);
 
