@@ -1,0 +1,4 @@
+t:syscalls:sys_enter_exec* /comm == "berserker"/
+{
+    printf("hit\n");
+}
