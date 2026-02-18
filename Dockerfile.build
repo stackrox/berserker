@@ -29,4 +29,7 @@ RUN cargo clippy -- -D warnings
 
 RUN cargo build -r
 
+# Test will require stub binary to be available
+ENV PATH="${PATH}:/berserker"
+
 RUN cargo test
