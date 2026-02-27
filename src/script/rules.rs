@@ -1,6 +1,6 @@
 use log::debug;
 
-use crate::script::ast::{Arg, Dist, Instruction, Node};
+use crate::script::ast::Node;
 
 /// Contains a list of transformation to apply after parsing
 /// TODO: Add following rules:

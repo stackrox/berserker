@@ -30,6 +30,8 @@ pub enum MachineInstruction {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Dist {
     Exp { rate: f64 },
+    Zipf { frequency: f64, exponent: f64 },
+    Uniform { upper: f64, lower: f64 },
 }
 
 #[derive(Debug, Clone)]

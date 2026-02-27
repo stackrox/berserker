@@ -1,4 +1,4 @@
-use log::{debug, trace};
+use log::trace;
 use pest::{self, Parser, error::Error};
 use std::collections::HashMap;
 
@@ -24,7 +24,6 @@ pub fn parse_instructions(source: &str) -> Result<Vec<Node>, Error<Rule>> {
     pest::set_error_detail(true);
     let mut ast = vec![];
     let pairs = InstructionParser::parse(Rule::file, source)?;
-    let expr_rules = [Rule::expr, Rule::machine];
 
     for pair in pairs {
         if pair.as_rule() != Rule::file {
@@ -32,7 +31,7 @@ pub fn parse_instructions(source: &str) -> Result<Vec<Node>, Error<Rule>> {
         }
 
         for i in pair.into_inner() {
-            if expr_rules.contains(&i.as_rule()) {
+            if matches!(i.as_rule(), Rule::expr | Rule::machine) {
                 ast.push(build_ast_from_expr(i));
             }
         }
@@ -53,12 +52,11 @@ fn build_ast_from_expr(pair: pest::iterators::Pair<Rule>) -> Node {
 }
 
 fn build_ast_from_minstr(
-    pair: pest::iterators::Pairs<Rule>,
+    pairs: pest::iterators::Pairs<Rule>,
 ) -> Vec<MachineInstruction> {
     let mut instr = vec![] as Vec<MachineInstruction>;
 
-    for i in pair {
-        let mut inner = i.into_inner();
+    for mut inner in pairs.map(|p| p.into_inner()) {
         let name = inner.next().expect("No instruction name");
 
         match first_nested_pair(name).as_rule() {
@@ -96,33 +94,32 @@ fn build_ast_from_minstr(
 }
 
 fn build_ast_from_work(
-    pairs: pest::iterators::Pairs<Rule>,
+    mut work_parts: pest::iterators::Pairs<Rule>,
 ) -> (String, HashMap<String, String>) {
-    let mut work_parts = pairs.clone();
-
     let name = work_parts.next().expect("No work name");
-    let params = work_parts.next().expect("Wo work parameters");
-
+    let params = work_parts.next().expect("No work parameters");
     let name_str = pair_to_string(name);
-    let mut params_map: HashMap<String, String> = HashMap::new();
 
-    for param in params.into_inner() {
-        let mut kv = param.into_inner();
-        let key = kv.next().expect("No parameter name");
-        let value = kv.next().expect("No parameter value");
+    let params_map = params
+        .into_inner()
+        .map(|param| {
+            let mut kv = param.into_inner();
+            let key = kv.next().expect("No parameter name");
+            let value = kv.next().expect("No parameter value");
 
-        assert_eq!(key.as_rule(), Rule::ident);
-        assert_eq!(value.as_rule(), Rule::value);
+            assert_eq!(key.as_rule(), Rule::ident);
+            assert_eq!(value.as_rule(), Rule::value);
 
-        params_map.insert(pair_to_string(key), pair_to_string(value));
-    }
+            (pair_to_string(key), pair_to_string(value))
+        })
+        .collect::<HashMap<String, String>>();
 
     (name_str, params_map)
 }
 
-fn build_ast_from_function(pairs: pest::iterators::Pairs<Rule>) -> Node {
-    let mut func_parts = pairs.clone();
-
+fn build_ast_from_function(
+    mut func_parts: pest::iterators::Pairs<Rule>,
+) -> Node {
     let work = func_parts.next().expect("No work unit");
     let instrs = func_parts.next().expect("No instructions");
     let distribution = func_parts.next();
@@ -152,7 +149,6 @@ fn build_ast_from_instr(
 
         let args: Vec<Arg> = args_pair
             .into_inner()
-            .into_iter()
             .map(|arg| {
                 let a = first_nested_pair(arg);
                 match a.as_rule() {
@@ -170,7 +166,6 @@ fn build_ast_from_instr(
 
                         let args: Vec<Arg> = args_pair
                             .into_inner()
-                            .into_iter()
                             .map(|arg| {
                                 let a =
                                     first_nested_pair(first_nested_pair(arg));
@@ -226,17 +221,21 @@ fn build_ast_from_instr(
 fn build_ast_from_dist(pair: pest::iterators::Pair<Rule>) -> Dist {
     match pair.as_rule() {
         Rule::dist => {
-            let mut opts: HashMap<String, String> = HashMap::new();
+            let opts = pair
+                .into_inner()
+                .filter_map(|p| {
+                    if let Rule::opt = p.as_rule() {
+                        let mut inner = p.into_inner();
+                        let key = inner.next().expect("No dist argument key");
+                        let value =
+                            inner.next().expect("No dist argument value");
 
-            for p in pair.into_inner() {
-                if let Rule::opt = p.as_rule() {
-                    let mut inner = p.into_inner();
-                    let key = inner.next().expect("No dist argument key");
-                    let value = inner.next().expect("No dist argument value");
-
-                    opts.insert(pair_to_string(key), pair_to_string(value));
-                }
-            }
+                        Some((pair_to_string(key), pair_to_string(value)))
+                    } else {
+                        None
+                    }
+                })
+                .collect::<HashMap<String, String>>();
 
             Dist::Exp {
                 rate: opts
@@ -251,17 +250,11 @@ fn build_ast_from_dist(pair: pest::iterators::Pair<Rule>) -> Dist {
     }
 }
 
-fn string_from_constant(pair: pest::iterators::Pair<Rule>) -> String {
-    assert_eq!(pair.as_rule(), Rule::constant);
+fn string_from_pair(pair: pest::iterators::Pair<Rule>) -> String {
+    assert!(matches!(pair.as_rule(), Rule::constant | Rule::ident));
 
-    // Extract "value" rule and convert it to String
-    pair_to_string(first_nested_pair(pair))
-}
-
-fn string_from_ident(pair: pest::iterators::Pair<Rule>) -> String {
-    assert_eq!(pair.as_rule(), Rule::ident);
-
-    // Extract "name" rule and convert it to String
+    // Extract "value" (Constants) or "name" (Identifier)
+    // and convert it to String
     pair_to_string(first_nested_pair(pair))
 }
 
@@ -272,8 +265,8 @@ fn string_from_argument(
 
     let inner = first_nested_pair(pair);
     match inner.as_rule() {
-        Rule::constant => Ok(string_from_constant(inner)),
-        Rule::ident => Ok(string_from_ident(inner)),
+        Rule::constant => Ok(string_from_pair(inner)),
+        Rule::ident => Ok(string_from_pair(inner)),
         Rule::dynamic => Err(ParseError::NotSupported),
         _ => Err(ParseError::TypeMismatch),
     }

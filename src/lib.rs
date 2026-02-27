@@ -3,6 +3,7 @@ use serde::{Deserialize, Deserializer};
 use std::{collections::HashMap, fmt::Display, net::Ipv4Addr, str::FromStr};
 use syscalls::Sysno;
 
+pub mod script;
 pub mod worker;
 
 /// Main workload configuration, contains general bits for all types of

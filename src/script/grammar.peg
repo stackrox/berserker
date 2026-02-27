@@ -6,7 +6,7 @@ ident = @{ident_char ~ (ASCII_DIGIT | ident_char)*}
 
 constant = {
     "\"" ~ value ~ "\""
-  | ASCII_DIGIT*
+  | ASCII_DIGIT+
 }
 
 randomPath = { "random_path" }
