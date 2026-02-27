@@ -1,6 +1,6 @@
 FROM builder:latest as builder
 
-FROM registry.fedoraproject.org/fedora:42
+FROM registry.fedoraproject.org/fedora:43
 
 RUN mkdir /etc/berserker
 
