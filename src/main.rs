@@ -204,7 +204,8 @@ fn main() {
                         .required(false),
                 )
                 // Add in settings from the environment (with a prefix of APP)
-                // Eg.. `BERSERKER__WORKLOAD__ARRIVAL_RATE=1` would set the `arrival_rate` key
+                // Eg.. `BERSERKER__WORKLOAD__ARRIVAL_RATE=1` would set the
+                // `arrival_rate` key
                 .add_source(
                     config::Environment::with_prefix("BERSERKER")
                         .try_parsing(true)
@@ -230,7 +231,8 @@ fn main() {
                 let elapsed = duration_timer.elapsed().unwrap().as_secs();
 
                 // Ignore processes without specified duration -- we don't want
-                // neither terminate them, nor count against processes to compare.
+                // neither terminate them, nor count against processes to
+                // compare.
                 let watched_processes = processes
                     .iter()
                     .filter(|(_, duration)| *duration > 0)

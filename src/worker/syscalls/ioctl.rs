@@ -14,8 +14,8 @@ pub struct IoctlCall {
 
 impl IoctlCall {
     pub fn new(_: &ArgsMap) -> Self {
-        // Zero initialize all fields, fd will be initialized in `Syscaller::init`.
-        // All other fields can be overridden as needed
+        // Zero initialize all fields, fd will be initialized in
+        // `Syscaller::init`. All other fields can be overridden as needed
         Default::default()
     }
 }

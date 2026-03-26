@@ -7,6 +7,7 @@ endif
 .PHONY: all
 all:
 	docker build -t berserker -f Containerfile .
+	docker build -t berserker -f Containerfile --build-arg=RUST_VERSION=nightly .
 	docker build -t berserker-test -f Containerfile.test .
 	docker run --privileged berserker-test
 
