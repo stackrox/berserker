@@ -34,6 +34,13 @@ workloads:
   attached to a specified tracepoint. This allows to simulate program
   contention on the same attachment point.
 
+# How to build
+
+No magic is required, use `Cargo` to build everything as usual. There is one
+external dependency though, you need to install LLVM development package. LLVM
+version should correlated with the `llvm-sys` crate being used, currently it's
+v20.
+
 # Configuration
 
 There are few ways to tune the configuration:

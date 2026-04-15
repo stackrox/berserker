@@ -9,14 +9,17 @@ use crate::{
 
 use self::{
     bpf::BpfWorker, endpoints::EndpointWorker, network::NetworkWorker,
-    processes::ProcessesWorker, syscalls::SyscallsWorker,
+    processes::ProcessesWorker, script::ScriptWorker, syscalls::SyscallsWorker,
 };
+
+use crate::script::ast::Node;
 
 pub mod bpf;
 pub mod endpoints;
 pub mod io_uring;
 pub mod network;
 pub mod processes;
+pub mod script;
 pub mod syscalls;
 
 pub fn new_worker(
@@ -69,4 +72,8 @@ pub fn new_worker(
             Box::new(IOUringWorker::new(workload, cpu, process))
         }
     }
+}
+
+pub fn new_script_worker(node: Node) -> Box<dyn Worker> {
+    Box::new(ScriptWorker::new(node))
 }
