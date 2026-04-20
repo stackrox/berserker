@@ -38,6 +38,7 @@ use berserker::{
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use berserker::machine::apply;
 use berserker::script::{
     ast::Node, parser::parse_instructions, rules::apply_rules,
 };
@@ -65,11 +66,13 @@ fn run_script(script_path: String) -> Vec<(i32, u64)> {
         parse_instructions(&std::fs::read_to_string(script_path).unwrap())
             .unwrap();
 
-    let (_machine, works): (Vec<_>, Vec<_>) =
+    let (machine, works): (Vec<_>, Vec<_>) =
         ast.iter().partition_map(|node| match node {
             Node::Work { .. } => Either::Right(node),
             Node::Machine { .. } => Either::Left(node),
         });
+
+    let _ = apply(machine);
 
     apply_rules(works)
         .into_iter()
@@ -311,20 +314,27 @@ mod tests {
     #[test]
     fn test_file_script() {
         let input = r#"
+            machine {
+              path("/tmp/data");
+            }
+
             random (workers = 1, duration = 10) {
-              open(random_path("/tmp"));
+              open(random_path("/tmp/data"));
             }
 
             repeated (workers = 1, duration = 10) {
-              open("/tmp/test");
+              open("/tmp/data/test");
             }
         "#;
 
         let ast: Vec<Node> = parse_instructions(input).unwrap();
-        assert_eq!(ast.len(), 2);
+        assert_eq!(ast.len(), 3);
 
-        new_script_worker(ast[0].clone()).run_payload().unwrap();
+        // apply machine statements
+        let _ = apply(vec![&ast[0]]);
 
+        // run workers
         new_script_worker(ast[1].clone()).run_payload().unwrap();
+        new_script_worker(ast[2].clone()).run_payload().unwrap();
     }
 }
