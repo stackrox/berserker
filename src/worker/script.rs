@@ -506,17 +506,19 @@ impl Worker for ScriptWorker {
                 debug!("Distribution {:?}", d);
                 let Dist::Exp { rate } = d else { todo!() };
 
-                loop {
-                    let worker = self.clone();
-                    thread::spawn(move || {
-                        (worker.jit)();
-                    });
+                thread::scope(|s| {
+                    loop {
+                        let worker = self.clone();
+                        s.spawn(move || {
+                            (worker.jit)();
+                        });
 
-                    let interval: f64 =
-                        thread_rng().sample(Exp::new(*rate).unwrap());
-                    debug!("Interval {}", interval);
-                    thread::sleep(time::Duration::from_secs_f64(interval));
-                }
+                        let interval: f64 =
+                            thread_rng().sample(Exp::new(*rate).unwrap());
+                        debug!("Interval {}", interval);
+                        thread::sleep(time::Duration::from_secs_f64(interval));
+                    }
+                });
             }
             None => {
                 debug!("Single unit");
