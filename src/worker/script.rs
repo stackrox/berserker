@@ -522,7 +522,7 @@ impl Worker for ScriptWorker {
             }
             None => {
                 debug!("Single unit");
-                (self.jit)()
+                (self.jit)();
             }
         };
 
