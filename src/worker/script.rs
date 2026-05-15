@@ -516,9 +516,6 @@ impl Worker for ScriptWorker {
                 let Dist::Exp { rate } = d else { todo!() };
 
                 thread::scope(|s| {
-                    #[cfg(feature = "dhat-heap")]
-                    let mut _dhat_counter: u64 = 0;
-
                     loop {
                         let worker = self.clone();
                         s.spawn(move || {
@@ -529,14 +526,6 @@ impl Worker for ScriptWorker {
                             thread_rng().sample(Exp::new(*rate).unwrap());
                         debug!("Interval {}", interval);
                         thread::sleep(time::Duration::from_secs_f64(interval));
-
-                        #[cfg(feature = "dhat-heap")]
-                        {
-                            _dhat_counter += 1;
-                            if _dhat_counter >= 1_000 {
-                                break;
-                            }
-                        }
                     }
                 });
             }

@@ -10,10 +10,6 @@ all:
 	docker build -t berserker-test -f Containerfile.test .
 	docker run --privileged berserker-test
 
-.PHONY: profile
-profile:
-	docker build -t berserker:profile --build-arg CARGO_FEATURES=dhat-heap -f Containerfile .
-
 .PHONY: build-network
 build-berserker-network:
 	docker build -t berserker-network scripts/network

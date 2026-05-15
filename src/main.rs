@@ -13,10 +13,6 @@
 //! * Invoke a workload-specific logic via run_payload
 //! * Wait for all the workers to finish
 
-#[cfg(feature = "dhat-heap")]
-#[global_allocator]
-static ALLOC: dhat::Alloc = dhat::Alloc;
-
 #[macro_use]
 extern crate log;
 extern crate core_affinity;
@@ -111,14 +107,7 @@ fn run_script(script_path: String) -> Vec<(i32, u64)> {
                             Some((child, duration))
                         }
                         Ok(Fork::Child) => {
-                            {
-                                #[cfg(feature = "dhat-heap")]
-                                let _profiler = dhat::Profiler::new_heap();
-                                worker.run_payload().unwrap();
-                            }
-                            #[cfg(feature = "dhat-heap")]
-                            std::process::exit(0);
-                            #[allow(unreachable_code)]
+                            worker.run_payload().unwrap();
                             None
                         }
                         Err(e) => {
