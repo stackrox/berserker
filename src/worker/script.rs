@@ -8,6 +8,7 @@ use std::{
     io::prelude::*,
     net::{Shutdown, TcpStream},
     process::Command,
+    sync::Arc,
     thread, time,
 };
 
@@ -515,11 +516,31 @@ impl Worker for ScriptWorker {
                 debug!("Distribution {:?}", d);
                 let Dist::Exp { rate } = d else { todo!() };
 
+                const MAX_CONCURRENT: usize = 16;
+                let semaphore = Arc::new((
+                    std::sync::Mutex::new(0usize),
+                    std::sync::Condvar::new(),
+                ));
+
                 thread::scope(|s| {
                     loop {
+                        {
+                            let (lock, cvar) = &*semaphore;
+                            let mut count = cvar
+                                .wait_while(lock.lock().unwrap(), |c| {
+                                    *c >= MAX_CONCURRENT
+                                })
+                                .unwrap();
+                            *count += 1;
+                        }
+
                         let worker = self.clone();
+                        let sem = Arc::clone(&semaphore);
                         s.spawn(move || {
                             (worker.jit)();
+                            let (lock, cvar) = &*sem;
+                            *lock.lock().unwrap() -= 1;
+                            cvar.notify_one();
                         });
 
                         let interval: f64 =
