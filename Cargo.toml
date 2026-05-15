@@ -5,7 +5,11 @@ edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+dhat-heap = ["dep:dhat"]
+
 [dependencies]
+dhat = { version = "0.3", optional = true }
 fork = "0.1"
 nix = "0.26.2"
 core_affinity = "0.8.0"

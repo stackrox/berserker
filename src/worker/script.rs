@@ -22,6 +22,7 @@ use llvm::execution_engine::*;
 use llvm::target::*;
 use llvm_sys::LLVMType;
 use llvm_sys::prelude::*;
+use std::cell::RefCell;
 use std::ffi::{CStr, CString, c_void};
 use std::mem;
 
@@ -129,6 +130,11 @@ pub unsafe extern "C" fn task(name: *const i8, random: bool) -> u64 {
     0
 }
 
+thread_local! {
+    static LAST_RANDOM_PATH: RefCell<CString> =
+        RefCell::new(CString::new("").unwrap());
+}
+
 /// Return a randomly generated path.
 ///
 /// # Safety
@@ -144,7 +150,10 @@ pub unsafe extern "C" fn random_path(base: *const i8) -> *const i8 {
         .map(char::from)
         .collect();
 
-    CString::new(format!("{base}/{uniq}")).unwrap().into_raw()
+    LAST_RANDOM_PATH.with(|last| {
+        *last.borrow_mut() = CString::new(format!("{base}/{uniq}")).unwrap();
+        last.borrow().as_ptr()
+    })
 }
 
 #[derive(Debug, Clone)]
@@ -507,6 +516,9 @@ impl Worker for ScriptWorker {
                 let Dist::Exp { rate } = d else { todo!() };
 
                 thread::scope(|s| {
+                    #[cfg(feature = "dhat-heap")]
+                    let mut _dhat_counter: u64 = 0;
+
                     loop {
                         let worker = self.clone();
                         s.spawn(move || {
@@ -517,6 +529,14 @@ impl Worker for ScriptWorker {
                             thread_rng().sample(Exp::new(*rate).unwrap());
                         debug!("Interval {}", interval);
                         thread::sleep(time::Duration::from_secs_f64(interval));
+
+                        #[cfg(feature = "dhat-heap")]
+                        {
+                            _dhat_counter += 1;
+                            if _dhat_counter >= 1_000 {
+                                break;
+                            }
+                        }
                     }
                 });
             }
