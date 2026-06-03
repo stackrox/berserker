@@ -47,8 +47,19 @@ impl NetworkWorker {
     ) -> Result<(), WorkerError> {
         debug!("Starting server at {:?}:{:?}", addr, target_port);
 
-        let listener =
-            TcpListener::bind((addr.to_string(), target_port)).unwrap();
+        let listener = loop {
+            match TcpListener::bind((addr.to_string(), target_port)) {
+                Ok(l) => break l,
+                Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
+                    info!(
+                        "Address {}:{} in use, retrying in 1s",
+                        addr, target_port
+                    );
+                    thread::sleep(std::time::Duration::from_secs(1));
+                }
+                Err(e) => panic!("Failed to bind: {}", e),
+            }
+        };
 
         for stream in listener.incoming() {
             let mut stream = stream.unwrap();
