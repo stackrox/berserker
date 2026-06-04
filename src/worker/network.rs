@@ -47,14 +47,21 @@ impl NetworkWorker {
     ) -> Result<(), WorkerError> {
         debug!("Starting server at {:?}:{:?}", addr, target_port);
 
+        const MAX_BIND_RETRIES: u32 = 30;
+        let mut retries = 0;
         let listener = loop {
             match TcpListener::bind((addr.to_string(), target_port)) {
                 Ok(l) => break l,
                 Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
-                    info!(
-                        "Address {}:{} in use, retrying in 1s",
-                        addr, target_port
-                    );
+                    retries += 1;
+                    if retries > MAX_BIND_RETRIES {
+                        return Err(WorkerError::InternalWithMessage(
+                            format!(
+                                "Failed to bind {}:{} after {} retries: {}",
+                                addr, target_port, MAX_BIND_RETRIES, e
+                            ),
+                        ));
+                    }
                     thread::sleep(std::time::Duration::from_secs(1));
                 }
                 Err(e) => panic!("Failed to bind: {}", e),
