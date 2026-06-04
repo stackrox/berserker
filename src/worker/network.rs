@@ -55,12 +55,10 @@ impl NetworkWorker {
                 Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
                     retries += 1;
                     if retries > MAX_BIND_RETRIES {
-                        return Err(WorkerError::InternalWithMessage(
-                            format!(
-                                "Failed to bind {}:{} after {} retries: {}",
-                                addr, target_port, MAX_BIND_RETRIES, e
-                            ),
-                        ));
+                        return Err(WorkerError::InternalWithMessage(format!(
+                            "Failed to bind {}:{} after {} retries: {}",
+                            addr, target_port, MAX_BIND_RETRIES, e
+                        )));
                     }
                     thread::sleep(std::time::Duration::from_secs(1));
                 }
