@@ -152,8 +152,9 @@ pub unsafe extern "C" fn random_path(base: *const i8) -> *const i8 {
         .collect();
 
     LAST_RANDOM_PATH.with(|last| {
-        *last.borrow_mut() = CString::new(format!("{base}/{uniq}")).unwrap();
-        last.borrow().as_ptr()
+        let mut last = last.borrow_mut();
+        *last = CString::new(format!("{base}/{uniq}")).unwrap();
+        last.as_ptr()
     })
 }
 
