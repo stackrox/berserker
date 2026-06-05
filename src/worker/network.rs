@@ -52,7 +52,7 @@ impl NetworkWorker {
         let listener = loop {
             match TcpListener::bind((addr.to_string(), target_port)) {
                 Ok(l) => break l,
-                Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
+                Err(e) if e.kind() == io::ErrorKind::AddrInUse => {
                     retries += 1;
                     if retries > MAX_BIND_RETRIES {
                         return Err(WorkerError::InternalWithMessage(format!(
@@ -60,7 +60,7 @@ impl NetworkWorker {
                             addr, target_port, MAX_BIND_RETRIES, e
                         )));
                     }
-                    thread::sleep(std::time::Duration::from_secs(1));
+                    thread::sleep(Duration::from_secs(1));
                 }
                 Err(e) => panic!("Failed to bind: {}", e),
             }
