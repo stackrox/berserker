@@ -8,9 +8,11 @@ use std::str;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{
     fmt::Display,
+    io,
     io::{BufReader, prelude::*},
     net::TcpListener,
     thread,
+    time::Duration,
 };
 
 use crate::{BaseConfig, Worker, WorkerError, Workload, WorkloadConfig};
