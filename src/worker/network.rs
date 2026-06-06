@@ -39,6 +39,29 @@ impl NetworkWorker {
         }
     }
 
+    fn bind_port(
+        &self,
+        addr: Ipv4Address,
+        target_port: u16,
+    ) -> Result<TcpListener, WorkerError> {
+        const MAX_BIND_RETRIES: usize = 30;
+        let addr = addr.to_string();
+        for _ in 0..MAX_BIND_RETRIES {
+            match TcpListener::bind((addr.as_str(), target_port)) {
+                Ok(l) => return Ok(l),
+                Err(e) if e.kind() == io::ErrorKind::AddrInUse => {
+                    thread::sleep(Duration::from_secs(1));
+                }
+                Err(e) => panic!("Failed to bind: {}", e),
+            }
+        }
+
+        Err(WorkerError::InternalWithMessage(format!(
+            "Failed to bind {}:{} after {} retries: address in use",
+            addr, target_port, MAX_BIND_RETRIES
+        )))
+    }
+
     /// Start a simple server. The client side is going to be a networking
     /// worker as well, so for convenience of troubleshooting do not error
     /// out if something unexpected happened, log and proceed instead.
@@ -49,24 +72,7 @@ impl NetworkWorker {
     ) -> Result<(), WorkerError> {
         debug!("Starting server at {:?}:{:?}", addr, target_port);
 
-        const MAX_BIND_RETRIES: u32 = 30;
-        let mut retries = 0;
-        let listener = loop {
-            match TcpListener::bind((addr.to_string(), target_port)) {
-                Ok(l) => break l,
-                Err(e) if e.kind() == io::ErrorKind::AddrInUse => {
-                    retries += 1;
-                    if retries > MAX_BIND_RETRIES {
-                        return Err(WorkerError::InternalWithMessage(format!(
-                            "Failed to bind {}:{} after {} retries: {}",
-                            addr, target_port, MAX_BIND_RETRIES, e
-                        )));
-                    }
-                    thread::sleep(Duration::from_secs(1));
-                }
-                Err(e) => panic!("Failed to bind: {}", e),
-            }
-        };
+        let listener = self.bind_port(addr, target_port)?;
 
         for stream in listener.incoming() {
             let mut stream = stream.unwrap();
