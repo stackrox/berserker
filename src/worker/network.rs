@@ -8,9 +8,11 @@ use std::str;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{
     fmt::Display,
+    io,
     io::{BufReader, prelude::*},
     net::TcpListener,
     thread,
+    time::Duration,
 };
 
 use crate::{BaseConfig, Worker, WorkerError, Workload, WorkloadConfig};
@@ -37,6 +39,29 @@ impl NetworkWorker {
         }
     }
 
+    fn bind_port(
+        &self,
+        addr: Ipv4Address,
+        target_port: u16,
+    ) -> Result<TcpListener, WorkerError> {
+        const MAX_BIND_RETRIES: usize = 30;
+        let addr = addr.to_string();
+        for _ in 0..MAX_BIND_RETRIES {
+            match TcpListener::bind((addr.as_str(), target_port)) {
+                Ok(l) => return Ok(l),
+                Err(e) if e.kind() == io::ErrorKind::AddrInUse => {
+                    thread::sleep(Duration::from_secs(1));
+                }
+                Err(e) => panic!("Failed to bind: {}", e),
+            }
+        }
+
+        Err(WorkerError::InternalWithMessage(format!(
+            "Failed to bind {}:{} after {} retries: address in use",
+            addr, target_port, MAX_BIND_RETRIES
+        )))
+    }
+
     /// Start a simple server. The client side is going to be a networking
     /// worker as well, so for convenience of troubleshooting do not error
     /// out if something unexpected happened, log and proceed instead.
@@ -47,8 +72,7 @@ impl NetworkWorker {
     ) -> Result<(), WorkerError> {
         debug!("Starting server at {:?}:{:?}", addr, target_port);
 
-        let listener =
-            TcpListener::bind((addr.to_string(), target_port)).unwrap();
+        let listener = self.bind_port(addr, target_port)?;
 
         for stream in listener.incoming() {
             let mut stream = stream.unwrap();
