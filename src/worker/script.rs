@@ -24,7 +24,6 @@ use llvm::execution_engine::*;
 use llvm::target::*;
 use llvm_sys::LLVMType;
 use llvm_sys::prelude::*;
-use std::cell::RefCell;
 use std::ffi::{CStr, CString, c_void};
 use std::mem;
 
