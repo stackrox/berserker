@@ -1,6 +1,7 @@
 extern crate llvm_sys as llvm;
 
 use std::{
+    cell::RefCell,
     collections::HashMap,
     fmt::Display,
     fs::OpenOptions,
@@ -23,7 +24,6 @@ use llvm::execution_engine::*;
 use llvm::target::*;
 use llvm_sys::LLVMType;
 use llvm_sys::prelude::*;
-use std::cell::RefCell;
 use std::ffi::{CStr, CString, c_void};
 use std::mem;
 
@@ -72,7 +72,7 @@ pub unsafe extern "C" fn debug(text: *const i8) -> u64 {
 /// The caller must ensure the pointer is valid and points to a null
 /// terminated C-string.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn open(path: *const i8) -> u64 {
+pub unsafe extern "C" fn open_file(path: *const i8) -> u64 {
     //let path = unsafe { CString::from_raw(path as *mut i8) };
     let path = unsafe { CStr::from_ptr(path) };
     debug!("Open path {:?}", path);
@@ -132,8 +132,7 @@ pub unsafe extern "C" fn task(name: *const i8, random: bool) -> u64 {
 }
 
 thread_local! {
-    static LAST_RANDOM_PATH: RefCell<CString> =
-        RefCell::new(CString::new("").unwrap());
+    static POINTERS: RefCell<Vec<*mut i8>> = const { RefCell::new(vec![]) };
 }
 
 /// Return a randomly generated path.
@@ -151,11 +150,24 @@ pub unsafe extern "C" fn random_path(base: *const i8) -> *const i8 {
         .map(char::from)
         .collect();
 
-    LAST_RANDOM_PATH.with(|last| {
-        let mut last = last.borrow_mut();
-        *last = CString::new(format!("{base}/{uniq}")).unwrap();
-        last.as_ptr()
-    })
+    let result = CString::new(format!("{base}/{uniq}")).unwrap().into_raw();
+    POINTERS.with(|ps| ps.borrow_mut().push(result));
+    result
+}
+
+/// # Safety
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cleanup(_: *const i8) -> u64 {
+    POINTERS.with(|ps| {
+        let mut vec = ps.borrow_mut();
+        for p in vec.as_slice() {
+            let _ = unsafe { CString::from_raw(*p) };
+        }
+
+        vec.clear();
+    });
+
+    0
 }
 
 #[derive(Debug, Clone)]
@@ -192,7 +204,7 @@ pub static RUNTIME: LazyLock<HashMap<String, RuntimeFunc>> =
             (
                 "open".to_string(),
                 RuntimeFunc {
-                    func: open as *const () as usize,
+                    func: open_file as *const () as usize,
                     param_count: 1,
                     param_types: &[RuntimeType::Pointer],
                     return_type: RuntimeType::Int,
@@ -217,14 +229,27 @@ pub static RUNTIME: LazyLock<HashMap<String, RuntimeFunc>> =
                     return_type: RuntimeType::Pointer,
                 },
             ),
+            // utils
+            (
+                "cleanup".to_string(),
+                RuntimeFunc {
+                    func: cleanup as *const () as usize,
+                    param_count: 1,
+                    param_types: &[RuntimeType::Pointer],
+                    return_type: RuntimeType::Int,
+                },
+            ),
         ])
     });
 
 impl ScriptWorker {
-    fn jit_instruction(name: String, arg: Arg, ctx: &BuildContext) {
+    fn jit_instruction(name: &CStr, arg: Arg, ctx: &BuildContext) {
         let mut arg_ptr = Self::get_arg_value(arg, ctx);
 
-        let (func, func_type) = ctx.module_runtime.get(&name).unwrap();
+        let (func, func_type) = ctx
+            .module_runtime
+            .get(name.to_str().expect("Couldn't convert name to string"))
+            .unwrap();
 
         unsafe {
             LLVMBuildCall2(
@@ -233,7 +258,7 @@ impl ScriptWorker {
                 *func,
                 &mut arg_ptr,
                 1,
-                name.as_str().as_ptr() as *const _,
+                name.as_ptr() as *const _,
             );
         }
     }
@@ -331,7 +356,8 @@ impl ScriptWorker {
                     &mut err,
                 ) != 0
                 {
-                    // In case of error, we must avoid using the uninitialized ExecutionEngineRef.
+                    // In case of error, we must avoid using the uninitialized
+                    // ExecutionEngineRef.
                     assert!(!err.is_null());
                     panic!(
                         "Failed to create execution engine: {:?}",
@@ -396,8 +422,8 @@ impl ScriptWorker {
                 function_type,
             );
 
-            // Create a basic block in the function and set our builder to generate
-            // code in it.
+            // Create a basic block in the function and set our builder to
+            // generate code in it.
             let bb = LLVMAppendBasicBlockInContext(
                 context,
                 function,
@@ -436,30 +462,22 @@ impl ScriptWorker {
                 // JIT the instruction and collect it's name
                 let name = match instr.clone() {
                     Instruction::Task { name, args: _ } => {
-                        Self::jit_instruction(String::from("task"), name, &ctx);
+                        Self::jit_instruction(c"task", name, &ctx);
                         "task"
                     }
 
                     Instruction::Open { path } => {
-                        Self::jit_instruction(String::from("open"), path, &ctx);
+                        Self::jit_instruction(c"open", path, &ctx);
                         "open"
                     }
 
                     Instruction::Ping { server } => {
-                        Self::jit_instruction(
-                            String::from("ping"),
-                            server,
-                            &ctx,
-                        );
+                        Self::jit_instruction(c"ping", server, &ctx);
                         "ping"
                     }
 
                     Instruction::Debug { text } => {
-                        Self::jit_instruction(
-                            String::from("debug"),
-                            text,
-                            &ctx,
-                        );
+                        Self::jit_instruction(c"debug", text, &ctx);
                         "debug"
                     }
                 };
@@ -482,6 +500,30 @@ impl ScriptWorker {
                     runtime_func.func as *mut c_void,
                 );
             }
+
+            // Final instruction to clear dangling pointers
+            Self::jit_instruction(
+                c"cleanup",
+                Arg::Const {
+                    text: "".to_string(),
+                },
+                &ctx,
+            );
+
+            let module_func = LLVMGetNamedFunction(
+                module,
+                c"cleanup".to_bytes().as_ptr() as *const _,
+            );
+
+            let runtime_func = &RUNTIME
+                .get("cleanup")
+                .expect("No runtime function with the name");
+
+            LLVMAddGlobalMapping(
+                ee,
+                module_func,
+                runtime_func.func as *mut c_void,
+            );
 
             // Emit a `ret i64` into the function to return the computed sum.
             let ret = LLVMConstInt(i64t, 0, 0);

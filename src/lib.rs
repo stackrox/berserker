@@ -28,7 +28,8 @@ pub struct WorkloadConfig {
     /// Custom workload configuration.
     pub workload: Workload,
 
-    /// For how long to run the worker. Default value is zero, meaning no limit.
+    /// For how long to run the worker. Default value is zero, meaning no
+    /// limit.
     #[serde(default = "default_duration")]
     pub duration: u64,
 }
@@ -194,8 +195,8 @@ pub enum Workload {
         /// Maximum number of dynamic connections
         connections_dyn_max: u32,
 
-        // How many connections to make to the same server address and port with
-        // different client ports
+        /// How many connections to make to the same server address and port
+        /// with different client ports
         #[serde(default = "default_conns_per_addr")]
         conns_per_addr: u16,
 
@@ -211,7 +212,8 @@ pub enum Workload {
         /// Whether or not to wait for a connection to be removed before adding
         /// a new one, when the dynamic connection limit is reached.
         /// if true: an old connection will be forcibly removed
-        /// if false: wait for a connection to naturally age-off before adding a new one
+        /// if false: wait for a connection to naturally age-off before adding
+        /// a new one
         preempt: bool,
     },
 

@@ -1,4 +1,6 @@
-FROM berserker:latest
+ARG RUST_VERSION=stable
+
+FROM berserker-${RUST_VERSION}:latest
 
 RUN dnf install -y \
     which \

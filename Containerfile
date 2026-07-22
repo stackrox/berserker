@@ -1,10 +1,8 @@
-FROM registry.fedoraproject.org/fedora:43 as builder
+FROM registry.fedoraproject.org/fedora:43 AS builder
+
+ARG RUST_VERSION=stable
 
 RUN dnf install -y \
-    rust \
-    cargo \
-    clippy \
-    rustfmt \
     # for stub \
     nasm \
     # for script jit \
@@ -15,7 +13,19 @@ RUN dnf install -y \
     # for bpf \
     clang \
     kernel-devel \
-    libbpf-devel
+    libbpf-devel && \
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
+        sh -s -- -y --default-toolchain $RUST_VERSION --profile minimal
+
+# $HOME is not evaluated here, any better way of getting the toolchain
+# directory?
+ENV PATH="${PATH}:/root/.cargo/bin"
+
+RUN rustup component add rustfmt clippy
+
+RUN if [ "${RUST_VERSION}" == "nightly" ]; then \
+    rustup component add rust-src --toolchain nightly; \
+    fi
 
 ADD ./ /berserker/
 
@@ -32,7 +42,12 @@ RUN cargo build -r
 # Test will require stub binary to be available
 ENV PATH="${PATH}:/berserker:/berserker/target/release"
 
-RUN cargo test
+RUN if [ "${RUST_VERSION}" == "nightly" ]; then \
+        TARGET=$(rustc --version --verbose | grep host | cut -d" " -f2) && \
+        RUSTFLAGS="-Z sanitizer=address" cargo +nightly test -Z build-std --target "$TARGET"; \
+    else \
+        cargo test; \
+    fi
 
 FROM registry.fedoraproject.org/fedora:43
 

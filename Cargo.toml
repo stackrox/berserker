@@ -31,3 +31,6 @@ pest_derive = "2.8.1"
 llvm-sys = "201.0.1"
 docopt = "1.1.1"
 signal-hook = "0.3.18"
+
+[features]
+default = []

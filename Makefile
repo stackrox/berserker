@@ -6,9 +6,15 @@ endif
 
 .PHONY: all
 all:
-	docker build -t berserker -f Containerfile .
+	docker build -t berserker-stable -f Containerfile .
 	docker build -t berserker-test -f Containerfile.test .
 	docker run --privileged berserker-test
+
+	docker build -t berserker-nightly -f Containerfile --build-arg=RUST_VERSION=nightly .
+	docker build -t berserker-test -f Containerfile.test --build-arg=RUST_VERSION=nightly .
+	docker run --privileged berserker-test
+
+	docker tag berserker-stable berserker
 
 .PHONY: build-network
 build-berserker-network:
