@@ -1,5 +1,3 @@
-#![cfg_attr(feature = "nightly", feature(sanitize))]
-
 use core_affinity::CoreId;
 use serde::{Deserialize, Deserializer};
 use std::{collections::HashMap, fmt::Display, net::Ipv4Addr, str::FromStr};

@@ -72,7 +72,7 @@ pub unsafe extern "C" fn debug(text: *const i8) -> u64 {
 /// The caller must ensure the pointer is valid and points to a null
 /// terminated C-string.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn open(path: *const i8) -> u64 {
+pub unsafe extern "C" fn open_file(path: *const i8) -> u64 {
     //let path = unsafe { CString::from_raw(path as *mut i8) };
     let path = unsafe { CStr::from_ptr(path) };
     debug!("Open path {:?}", path);
@@ -204,7 +204,7 @@ pub static RUNTIME: LazyLock<HashMap<String, RuntimeFunc>> =
             (
                 "open".to_string(),
                 RuntimeFunc {
-                    func: open as *const () as usize,
+                    func: open_file as *const () as usize,
                     param_count: 1,
                     param_types: &[RuntimeType::Pointer],
                     return_type: RuntimeType::Int,
