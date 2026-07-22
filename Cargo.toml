@@ -34,4 +34,3 @@ signal-hook = "0.3.18"
 
 [features]
 default = []
-nightly = []
