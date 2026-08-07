@@ -1,0 +1,39 @@
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: berserker
+  labels:
+    app: berserker
+spec:
+  selector:
+    matchLabels:
+      name: berserker
+  template:
+    metadata:
+      labels:
+        name: berserker
+    spec:
+      tolerations:
+      # these tolerations are to have the daemonset runnable on control plane nodes
+      # remove them if your control plane nodes should not run pods
+      - key: node-role.kubernetes.io/control-plane
+        operator: Exists
+        effect: NoSchedule
+      - key: node-role.kubernetes.io/master
+        operator: Exists
+        effect: NoSchedule
+      containers:
+      - name: berserker
+        image: quay.io/rhacs-eng/qa:berserker-1.0-45-g74de174922
+        volumeMounts:
+          - name: config
+            mountPath: "/etc/berserker"
+            readOnly: true
+      volumes:
+      - name: config
+        configMap:
+          name: berserker-config
+          items:
+          - key: workload.toml
+            path: workload.toml
