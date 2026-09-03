@@ -17,7 +17,7 @@ dynamicName = {
   | randomString
 }
 
-dynamic = {dynamicName ~ args}
+dynamic = {dynamicName ~ args?}
 
 // constant should be the last
 arg = {

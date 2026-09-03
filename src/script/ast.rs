@@ -14,9 +14,16 @@ pub enum Arg {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Instruction {
+    /// Execute a binary with specified name and arguments
     Task { name: Arg, args: Vec<Arg> },
+
+    /// Open a file at specified path
     Open { path: Arg },
+
+    /// Print a debugging message (subject to configured log level)
     Debug { text: Arg },
+
+    /// Send a message to a server at specified address
     Ping { server: Arg },
 }
 

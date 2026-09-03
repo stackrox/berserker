@@ -116,23 +116,40 @@ pub unsafe extern "C" fn ping(addr: *const i8) -> u64 {
 /// The caller must ensure the pointer is valid and points to a null
 /// terminated C-string.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn task(name: *const i8, random: bool) -> u64 {
+pub unsafe extern "C" fn task(name: *const i8, args: *const i8) -> u64 {
     let name = unsafe { CStr::from_ptr(name) };
-    debug!("Task {:?} {:?}", name, random);
-    let uniq_arg: String = rand::thread_rng()
-        .sample_iter(&Alphanumeric)
-        .take(7)
-        .map(char::from)
-        .collect();
-    let _res = Command::new(name.to_str().unwrap())
-        .arg(uniq_arg)
-        .output()
-        .unwrap();
-    0
+    let args = unsafe { CStr::from_ptr(args) };
+    debug!("Task {:?} {:?}", name, args);
+
+    let status = Command::new(name.to_str().unwrap())
+        .args(args.to_str().unwrap().split(' '))
+        .status()
+        .expect("Failed to execute task");
+
+    status.code().unwrap_or(0).try_into().unwrap()
 }
 
 thread_local! {
     static POINTERS: RefCell<Vec<*mut i8>> = const { RefCell::new(vec![]) };
+}
+
+/// Return a randomly generated string.
+///
+/// # Safety
+/// The caller must ensure the pointer is valid and points to a null
+/// terminated C-string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn random_string() -> *const i8 {
+    let rand: String = rand::thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(7)
+        .map(char::from)
+        .collect();
+
+    let result = CString::new(rand).unwrap().into_raw();
+
+    POINTERS.with(|ps| ps.borrow_mut().push(result));
+    result
 }
 
 /// Return a randomly generated path.
@@ -187,8 +204,8 @@ pub static RUNTIME: LazyLock<HashMap<String, RuntimeFunc>> =
                 "task".to_string(),
                 RuntimeFunc {
                     func: task as *const () as usize,
-                    param_count: 1,
-                    param_types: &[RuntimeType::Pointer],
+                    param_count: 2,
+                    param_types: &[RuntimeType::Pointer, RuntimeType::Pointer],
                     return_type: RuntimeType::Int,
                 },
             ),
@@ -229,6 +246,15 @@ pub static RUNTIME: LazyLock<HashMap<String, RuntimeFunc>> =
                     return_type: RuntimeType::Pointer,
                 },
             ),
+            (
+                "random_string".to_string(),
+                RuntimeFunc {
+                    func: random_string as *const () as usize,
+                    param_count: 0,
+                    param_types: &[],
+                    return_type: RuntimeType::Pointer,
+                },
+            ),
             // utils
             (
                 "cleanup".to_string(),
@@ -243,8 +269,12 @@ pub static RUNTIME: LazyLock<HashMap<String, RuntimeFunc>> =
     });
 
 impl ScriptWorker {
-    fn jit_instruction(name: &CStr, arg: Arg, ctx: &BuildContext) {
-        let mut arg_ptr = Self::get_arg_value(arg, ctx);
+    fn jit_instruction(name: &CStr, args: Vec<Arg>, ctx: &BuildContext) {
+        let (args_ref, args_len, args_cap) = args
+            .iter()
+            .map(|a| Self::get_arg_value(a.clone(), ctx))
+            .collect::<Vec<_>>()
+            .into_raw_parts();
 
         let (func, func_type) = ctx
             .module_runtime
@@ -256,16 +286,25 @@ impl ScriptWorker {
                 ctx.builder,
                 *func_type,
                 *func,
-                &mut arg_ptr,
-                1,
+                args_ref,
+                args_len.try_into().unwrap(),
                 name.as_ptr() as *const _,
             );
+
+            let _ = Vec::from_raw_parts(args_ref, args_len, args_cap);
         }
     }
 
     fn get_arg_value(arg: Arg, ctx: &BuildContext) -> LLVMValueRef {
         match arg {
             Arg::Const { text } => unsafe {
+                // The name of all constants created this way will be "const",
+                // which is ugly, but not a problem as LLVM modifies this to
+                // make sure uniqueness, i.e. they will be:
+                //
+                //      @const, @const.1, @const.2, ...
+                //
+                // in the jited code.
                 LLVMBuildGlobalString(
                     ctx.builder,
                     format!("{text}\0").as_ptr() as *const _,
@@ -285,12 +324,11 @@ impl ScriptWorker {
                     .get(&name)
                     .expect("No dynamic variable in the static runtime");
 
-                let text = match &args[0] {
-                    Arg::Const { text } => text,
-                    unknown => {
-                        panic!("Unknown dynamic variable argument: {unknown:?}")
-                    }
-                };
+                let (args_ref, args_len, args_cap) = args
+                    .iter()
+                    .map(|a| Self::get_arg_value(a.clone(), ctx))
+                    .collect::<Vec<_>>()
+                    .into_raw_parts();
 
                 unsafe {
                     trace!("Add mapping to {:?}", name);
@@ -305,20 +343,17 @@ impl ScriptWorker {
                         runtime_func.func as *mut c_void,
                     );
 
-                    let mut helper_ptr = LLVMBuildGlobalString(
-                        ctx.builder,
-                        format!("{text}\0").as_ptr() as *const _,
-                        c"const".as_ptr() as *const _,
-                    );
-
-                    LLVMBuildCall2(
+                    let call = LLVMBuildCall2(
                         ctx.builder,
                         *func_type,
                         *func,
-                        &mut helper_ptr,
-                        1,
+                        args_ref,
+                        args_len.try_into().unwrap(),
                         c"{name}".as_ptr() as *const _,
-                    )
+                    );
+
+                    let _ = Vec::from_raw_parts(args_ref, args_len, args_cap);
+                    call
                 }
             }
         }
@@ -371,6 +406,7 @@ impl ScriptWorker {
 
             // get a type for main function
             let i64t = LLVMInt64TypeInContext(context);
+            let boolt = LLVMInt1TypeInContext(context);
             let iptr = LLVMIntPtrTypeInContext(context, td);
 
             // Insert runtime functions into the module
@@ -440,6 +476,12 @@ impl ScriptWorker {
             );
             module_state.insert(String::from("stub"), stub_ptr);
 
+            let true_ptr = LLVMConstInt(boolt, 1, 0);
+            module_state.insert(String::from("true"), true_ptr);
+
+            let false_ptr = LLVMConstInt(boolt, 0, 0);
+            module_state.insert(String::from("false"), false_ptr);
+
             let Node::Work {
                 ref instructions, ..
             } = node
@@ -461,23 +503,26 @@ impl ScriptWorker {
             for instr in instructions {
                 // JIT the instruction and collect it's name
                 let name = match instr.clone() {
-                    Instruction::Task { name, args: _ } => {
-                        Self::jit_instruction(c"task", name, &ctx);
+                    Instruction::Task { name, args } => {
+                        let mut task_args = vec![name];
+                        task_args.extend_from_slice(&args);
+
+                        Self::jit_instruction(c"task", task_args, &ctx);
                         "task"
                     }
 
                     Instruction::Open { path } => {
-                        Self::jit_instruction(c"open", path, &ctx);
+                        Self::jit_instruction(c"open", vec![path], &ctx);
                         "open"
                     }
 
                     Instruction::Ping { server } => {
-                        Self::jit_instruction(c"ping", server, &ctx);
+                        Self::jit_instruction(c"ping", vec![server], &ctx);
                         "ping"
                     }
 
                     Instruction::Debug { text } => {
-                        Self::jit_instruction(c"debug", text, &ctx);
+                        Self::jit_instruction(c"debug", vec![text], &ctx);
                         "debug"
                     }
                 };
@@ -502,13 +547,7 @@ impl ScriptWorker {
             }
 
             // Final instruction to clear dangling pointers
-            Self::jit_instruction(
-                c"cleanup",
-                Arg::Const {
-                    text: "".to_string(),
-                },
-                &ctx,
-            );
+            Self::jit_instruction(c"cleanup", vec![], &ctx);
 
             let module_func = LLVMGetNamedFunction(
                 module,
