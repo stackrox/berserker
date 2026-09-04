@@ -62,19 +62,21 @@ struct Args {
 fn run_script(script_path: String) -> Vec<(i32, u64)> {
     info!("Loading script: {:?}", script_path);
 
-    let ast: Vec<Node> =
+    let nodes: Vec<Node> =
         parse_instructions(&std::fs::read_to_string(script_path).unwrap())
             .unwrap();
 
+    let prepared_nodes = apply_rules(nodes);
+
     let (machine, works): (Vec<_>, Vec<_>) =
-        ast.iter().partition_map(|node| match node {
+        prepared_nodes.iter().partition_map(|node| match node {
             Node::Work { .. } => Either::Right(node),
             Node::Machine { .. } => Either::Left(node),
         });
 
     let _ = apply(machine);
 
-    apply_rules(works)
+    works
         .into_iter()
         .flat_map(|node| {
             debug!("AST NODE: {:?}", node);
@@ -83,19 +85,11 @@ fn run_script(script_path: String) -> Vec<(i32, u64)> {
                 unreachable!()
             };
 
-            let workers: u32 = args
-                .get("workers")
-                .cloned()
-                .unwrap_or(String::from("0"))
-                .parse()
-                .unwrap();
+            let workers: u32 =
+                args.get("workers").cloned().unwrap().parse().unwrap();
 
-            let duration: u64 = args
-                .get("duration")
-                .cloned()
-                .unwrap_or(String::from("0"))
-                .parse()
-                .unwrap();
+            let duration: u64 =
+                args.get("duration").cloned().unwrap().parse().unwrap();
 
             (0..workers)
                 .filter_map(|_| {
@@ -338,5 +332,47 @@ mod tests {
         // run workers
         new_script_worker(ast[1].clone()).run_payload().unwrap();
         new_script_worker(ast[2].clone()).run_payload().unwrap();
+    }
+
+    #[test]
+    fn test_default_work_args() {
+        let input = r#"
+            main () {
+              task(stub);
+            }
+        "#;
+
+        let nodes: Vec<Node> = parse_instructions(input).unwrap();
+        assert_eq!(nodes.len(), 1);
+
+        let prepared_nodes = apply_rules(nodes);
+
+        let Node::Work { ref args, .. } = prepared_nodes[0] else {
+            unreachable!()
+        };
+
+        assert_eq!(args.get("workers").cloned().unwrap(), "1".to_string());
+        assert_eq!(args.get("duration").cloned().unwrap(), "0".to_string());
+    }
+
+    #[test]
+    fn test_custom_work_args() {
+        let input = r#"
+            main (workers = 2, duration = 10) {
+              task(stub);
+            }
+        "#;
+
+        let nodes: Vec<Node> = parse_instructions(input).unwrap();
+        assert_eq!(nodes.len(), 1);
+
+        let prepared_nodes = apply_rules(nodes);
+
+        let Node::Work { ref args, .. } = prepared_nodes[0] else {
+            unreachable!()
+        };
+
+        assert_eq!(args.get("workers").cloned().unwrap(), "2".to_string());
+        assert_eq!(args.get("duration").cloned().unwrap(), "10".to_string());
     }
 }
