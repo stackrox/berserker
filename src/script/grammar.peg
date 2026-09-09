@@ -27,7 +27,7 @@ arg = {
 }
 
 args = {"(" ~ (arg ~ ("," ~ arg)* ~ ","?)? ~ ")"}
-value = {(ASCII_ALPHANUMERIC| "." | " " | "/" | ":")*}
+value = {(ASCII_ALPHANUMERIC | "." | " " | "/" | ":" | "_")*}
 
 param = {ident ~ "=" ~ value}
 params = {"(" ~ (param ~ ("," ~ param)* ~ ","?)? ~ ")"}

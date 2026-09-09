@@ -5,7 +5,7 @@ machine {
 
 main (workers = 1) {
   debug("run task stub");
-  task(stub);
+  task(stub, random_string());
   debug("open file /tmp/test");
   open("/tmp/test");
   debug("ping server");
