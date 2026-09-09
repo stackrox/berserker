@@ -50,6 +50,7 @@ struct BuildContext<'a> {
     ee: LLVMExecutionEngineRef,
     builder: LLVMBuilderRef,
     module: LLVMModuleRef,
+    context: LLVMContextRef,
     module_state: &'a HashMap<String, LLVMValueRef>,
     module_runtime: &'a HashMap<String, (LLVMValueRef, LLVMTypeRef)>,
 }
@@ -118,13 +119,18 @@ pub unsafe extern "C" fn ping(addr: *const i8) -> u64 {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn task(name: *const i8, args: *const i8) -> u64 {
     let name = unsafe { CStr::from_ptr(name) };
-    let args = unsafe { CStr::from_ptr(args) };
-    debug!("Task {:?} {:?}", name, args);
+    let mut task = Command::new(name.to_str().unwrap());
 
-    let status = Command::new(name.to_str().unwrap())
-        .args(args.to_str().unwrap().split(' '))
-        .status()
-        .expect("Failed to execute task");
+    if !args.is_null() {
+        let args = unsafe { CStr::from_ptr(args) };
+        debug!("Task {:?} {:?}", name, args);
+
+        task.args(args.to_str().unwrap().split(' '));
+    } else {
+        debug!("Task {:?}, null", name);
+    }
+
+    let status = task.status().expect("Failed to execute task");
 
     status.code().unwrap_or(0).try_into().unwrap()
 }
@@ -297,6 +303,11 @@ impl ScriptWorker {
 
     fn get_arg_value(arg: Arg, ctx: &BuildContext) -> LLVMValueRef {
         match arg {
+            Arg::Null {} => unsafe {
+                let td = LLVMGetExecutionEngineTargetData(ctx.ee);
+                let iptr = LLVMIntPtrTypeInContext(ctx.context, td);
+                LLVMConstNull(iptr)
+            },
             Arg::Const { text } => unsafe {
                 // The name of all constants created this way will be "const",
                 // which is ugly, but not a problem as LLVM modifies this to
@@ -495,6 +506,7 @@ impl ScriptWorker {
                 ee,
                 builder,
                 module,
+                context,
                 module_state: &module_state,
                 module_runtime: &module_runtime,
             };

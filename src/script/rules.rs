@@ -11,9 +11,7 @@ fn apply_task_rules(task: &Instruction, _node: &Node) -> Instruction {
     };
 
     let new_args = if args.is_empty() {
-        vec![Arg::Const {
-            text: "".to_string(),
-        }]
+        vec![Arg::Null {}]
     } else {
         args.to_vec()
     };
