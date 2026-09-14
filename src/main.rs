@@ -328,6 +328,23 @@ mod tests {
     }
 
     #[test]
+    fn test_task_script_fixed_arg() {
+        let input = r#"
+            main () {
+              task(stub, "arg1 arg2");
+            }
+        "#;
+
+        let nodes: Vec<Node> = parse_instructions(input).unwrap();
+        assert_eq!(nodes.len(), 1);
+        let prepared_nodes = apply_rules(nodes);
+
+        new_script_worker(prepared_nodes[0].clone())
+            .run_payload()
+            .unwrap();
+    }
+
+    #[test]
     fn test_file_script() {
         let input = r#"
             machine {

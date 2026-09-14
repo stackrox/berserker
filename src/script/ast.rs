@@ -3,7 +3,7 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, PartialEq)]
 pub enum Arg {
     /// Null constant
-    Null {},
+    Null,
 
     /// Simple constant
     Const { text: String },

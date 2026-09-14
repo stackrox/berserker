@@ -119,20 +119,23 @@ pub unsafe extern "C" fn ping(addr: *const i8) -> u64 {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn task(name: *const i8, args: *const i8) -> u64 {
     let name = unsafe { CStr::from_ptr(name) };
-    let mut task = Command::new(name.to_str().unwrap());
 
-    if !args.is_null() {
-        let args = unsafe { CStr::from_ptr(args) };
+    let args = if !args.is_null() {
         debug!("Task {:?} {:?}", name, args);
-
-        task.args(args.to_str().unwrap().split(' '));
+        unsafe { CStr::from_ptr(args) }
     } else {
         debug!("Task {:?}, null", name);
-    }
+        c""
+    };
 
-    let status = task.status().expect("Failed to execute task");
-
-    status.code().unwrap_or(0).try_into().unwrap()
+    Command::new(name.to_str().unwrap())
+        .args(args.to_str().unwrap().split_whitespace())
+        .status()
+        .expect("Failed to execute task")
+        .code()
+        .unwrap_or(0)
+        .try_into()
+        .unwrap()
 }
 
 thread_local! {
@@ -276,11 +279,10 @@ pub static RUNTIME: LazyLock<HashMap<String, RuntimeFunc>> =
 
 impl ScriptWorker {
     fn jit_instruction(name: &CStr, args: Vec<Arg>, ctx: &BuildContext) {
-        let (args_ref, args_len, args_cap) = args
+        let mut args_ptr = args
             .iter()
             .map(|a| Self::get_arg_value(a.clone(), ctx))
-            .collect::<Vec<_>>()
-            .into_raw_parts();
+            .collect::<Vec<_>>();
 
         let (func, func_type) = ctx
             .module_runtime
@@ -292,18 +294,16 @@ impl ScriptWorker {
                 ctx.builder,
                 *func_type,
                 *func,
-                args_ref,
-                args_len.try_into().unwrap(),
+                args_ptr.as_mut_ptr(),
+                args.len().try_into().unwrap(),
                 name.as_ptr() as *const _,
             );
-
-            let _ = Vec::from_raw_parts(args_ref, args_len, args_cap);
         }
     }
 
     fn get_arg_value(arg: Arg, ctx: &BuildContext) -> LLVMValueRef {
         match arg {
-            Arg::Null {} => unsafe {
+            Arg::Null => unsafe {
                 let td = LLVMGetExecutionEngineTargetData(ctx.ee);
                 let iptr = LLVMIntPtrTypeInContext(ctx.context, td);
                 LLVMConstNull(iptr)
@@ -335,11 +335,10 @@ impl ScriptWorker {
                     .get(&name)
                     .expect("No dynamic variable in the static runtime");
 
-                let (args_ref, args_len, args_cap) = args
+                let mut args_ptr = args
                     .iter()
                     .map(|a| Self::get_arg_value(a.clone(), ctx))
-                    .collect::<Vec<_>>()
-                    .into_raw_parts();
+                    .collect::<Vec<_>>();
 
                 unsafe {
                     trace!("Add mapping to {:?}", name);
@@ -354,17 +353,14 @@ impl ScriptWorker {
                         runtime_func.func as *mut c_void,
                     );
 
-                    let call = LLVMBuildCall2(
+                    LLVMBuildCall2(
                         ctx.builder,
                         *func_type,
                         *func,
-                        args_ref,
-                        args_len.try_into().unwrap(),
+                        args_ptr.as_mut_ptr(),
+                        args.len().try_into().unwrap(),
                         c"{name}".as_ptr() as *const _,
-                    );
-
-                    let _ = Vec::from_raw_parts(args_ref, args_len, args_cap);
-                    call
+                    )
                 }
             }
         }
