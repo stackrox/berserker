@@ -1,13 +1,39 @@
 use log::debug;
 
-use crate::script::ast::{Instruction, Node};
+use crate::script::ast::{Arg, Instruction, Node};
 use std::collections::HashMap;
 
-fn apply_instruction_rules(
+/// Apply following transformations to task instruction:
+/// * If no arguments provided for the task, add an empty argument
+fn apply_task_rules(task: &Instruction, _node: &Node) -> Instruction {
+    let Instruction::Task { name, args } = task else {
+        unreachable!()
+    };
+
+    let new_args = if args.is_empty() {
+        vec![Arg::Null {}]
+    } else {
+        args.to_vec()
+    };
+
+    Instruction::Task {
+        name: name.clone(),
+        args: new_args,
+    }
+}
+
+fn apply_instructions_rules(
     instructions: &[Instruction],
-    _node: &Node,
+    node: &Node,
 ) -> Vec<Instruction> {
-    instructions.to_vec()
+    instructions
+        .iter()
+        .map(|i| match i {
+            Instruction::Task { .. } => apply_task_rules(i, node),
+            _ => i.clone(),
+        })
+        .collect::<Vec<_>>()
+        .to_vec()
 }
 
 fn apply_arg_rules(
@@ -43,7 +69,7 @@ fn apply_work_rules(work: Node) -> Node {
     Node::Work {
         name: name.clone(),
         args: apply_arg_rules(args, &work),
-        instructions: apply_instruction_rules(instructions, &work),
+        instructions: apply_instructions_rules(instructions, &work),
         dist: dist.clone(),
     }
 }
