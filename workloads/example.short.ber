@@ -10,4 +10,6 @@ main (workers = 1) {
   open("/tmp/test");
   debug("ping server");
   ping("127.0.0.1:8080");
+  debug("listen on random ports starting from 8081");
+  listen(8081, zipf(200, 1.4));
 }

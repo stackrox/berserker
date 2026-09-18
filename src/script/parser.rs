@@ -246,6 +246,17 @@ fn build_ast_from_instr(
                     server: args[0].clone(),
                 });
             }
+            Rule::listen => {
+                instr.push(Instruction::Listen {
+                    lower: args[0].clone(),
+                    n: args[1].clone(),
+                });
+            }
+            Rule::sleep => {
+                instr.push(Instruction::Sleep {
+                    interval: args[0].clone(),
+                });
+            }
             unknown => panic!("Unknown instruction type {unknown:?}"),
         }
     }
