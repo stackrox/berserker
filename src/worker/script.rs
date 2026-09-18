@@ -79,7 +79,6 @@ pub unsafe extern "C" fn debug(text: *const i8) -> u64 {
 /// terminated C-string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn open_file(path: *const i8) -> u64 {
-    //let path = unsafe { CString::from_raw(path as *mut i8) };
     let path = unsafe { CStr::from_ptr(path) };
     debug!("Open path {:?}", path);
     let mut file = OpenOptions::new()
