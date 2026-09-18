@@ -1,6 +1,5 @@
 machine {
   server(8080);
-  profile("bpf");
 }
 
 // Named work block
@@ -11,8 +10,11 @@ main (workers = 2, duration = 10) {
   // open(path) -- open file by path, create if needed and write something to it
   debug("run task stub");
   task(stub, random_string());
+  debug(random_string());
   debug("open file /tmp/test");
   open("/tmp/test");
+  debug("listen on random ports starting from 8081");
+  listen(8081, zipf(10, 1.4));
 } : exp {
   // If no distribution provided, do the unit only once.
   rate = 10.0;

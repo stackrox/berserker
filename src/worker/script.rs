@@ -7,9 +7,13 @@ use std::{
     fs::OpenOptions,
     io::Write,
     io::prelude::*,
-    net::{Shutdown, TcpStream},
+    net::{Shutdown, TcpListener, TcpStream},
+    os::fd::{AsRawFd, RawFd},
     process::Command,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
     thread, time,
 };
 
@@ -17,7 +21,7 @@ use std::sync::LazyLock;
 
 use log::{Level, debug, log_enabled, trace};
 use rand::{Rng, distributions::Alphanumeric, thread_rng};
-use rand_distr::Exp;
+use rand_distr::{Exp, Zipf};
 
 use llvm::core::*;
 use llvm::execution_engine::*;
@@ -139,8 +143,70 @@ pub unsafe extern "C" fn task(name: *const i8, args: *const i8) -> u64 {
         .unwrap()
 }
 
+/// Listen on a specified number of ports starting from the lower boundary.
+/// Open connections will live until the end of the block of work and will be
+/// shutdown in cleanup instruction. Note that there will be no concurrency
+/// issues, since threads for listening are registered in sychronous manner.
+///
+/// TODO: Decrement max_ports on batch exit.
+///
+/// # Safety
+/// The caller must ensure the pointer is valid and points to a null
+/// terminated C-string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn listen_on_ports(lower: u64, n: u64) -> u64 {
+    debug!("Listen {lower} {n}");
+    let max_ports =
+        Arc::clone(&MAX_PORTS).fetch_add(n as usize, Ordering::Relaxed);
+
+    let start_port = lower + max_ports as u64;
+    let _listeners: Vec<_> = (start_port..start_port + n)
+        .map(|port| {
+            let addr = format!("0.0.0.0:{port}");
+            let listener = TcpListener::bind(&addr)
+                .expect("Couldn't listen on the specified address");
+            let fd = listener.as_raw_fd();
+
+            trace!("Listen {addr}, fd {fd}");
+            SOCKETS.with(|socks| socks.borrow_mut().push(fd));
+
+            thread::spawn(move || for _stream in listener.incoming() {})
+        })
+        .collect();
+
+    0
+}
+
 thread_local! {
     static POINTERS: RefCell<Vec<*mut i8>> = const { RefCell::new(vec![]) };
+    static SOCKETS: RefCell<Vec<RawFd>> = const { RefCell::new(vec![]) };
+}
+
+pub static MAX_PORTS: LazyLock<Arc<AtomicUsize>> =
+    LazyLock::new(|| Arc::new(AtomicUsize::new(0)));
+
+/// Return a random integer from zipf distribution with specified
+/// size and exponent.
+///
+/// # Safety
+/// The caller must ensure the pointer is valid and points to a null
+/// terminated C-string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn zipf(size: u64, exp: f64) -> u64 {
+    debug!("zipf {size} {exp}");
+    thread_rng().sample(Zipf::new(size, exp).unwrap()) as u64
+}
+
+/// Sleeps for specified amount of time.
+///
+/// # Safety
+/// The caller must ensure the pointer is valid and points to a null
+/// terminated C-string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sleep(interval: f64) -> u64 {
+    debug!("Sleep {interval}");
+    thread::sleep(time::Duration::from_secs_f64(interval));
+    0
 }
 
 /// Return a randomly generated string.
@@ -185,10 +251,24 @@ pub unsafe extern "C" fn random_path(base: *const i8) -> *const i8 {
 /// # Safety
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn cleanup(_: *const i8) -> u64 {
+    debug!("Cleanup");
     POINTERS.with(|ps| {
         let mut vec = ps.borrow_mut();
         for p in vec.as_slice() {
+            trace!("Cleanup {:?}", p);
             let _ = unsafe { CString::from_raw(*p) };
+        }
+
+        vec.clear();
+    });
+
+    SOCKETS.with(|socks| {
+        let mut vec = socks.borrow_mut();
+        for fd in vec.as_slice() {
+            trace!("Shutdown {fd}");
+            unsafe {
+                libc::shutdown(*fd, libc::SHUT_RD);
+            }
         }
 
         vec.clear();
@@ -246,6 +326,24 @@ pub static RUNTIME: LazyLock<HashMap<String, RuntimeFunc>> =
                     return_type: RuntimeType::Int,
                 },
             ),
+            (
+                "listen".to_string(),
+                RuntimeFunc {
+                    func: listen_on_ports as *const () as usize,
+                    param_count: 2,
+                    param_types: &[RuntimeType::Int, RuntimeType::Int],
+                    return_type: RuntimeType::Int,
+                },
+            ),
+            (
+                "sleep".to_string(),
+                RuntimeFunc {
+                    func: sleep as *const () as usize,
+                    param_count: 1,
+                    param_types: &[RuntimeType::Float],
+                    return_type: RuntimeType::Pointer,
+                },
+            ),
             // dynamic values
             (
                 "random_path".to_string(),
@@ -262,6 +360,15 @@ pub static RUNTIME: LazyLock<HashMap<String, RuntimeFunc>> =
                     func: random_string as *const () as usize,
                     param_count: 0,
                     param_types: &[],
+                    return_type: RuntimeType::Pointer,
+                },
+            ),
+            (
+                "zipf".to_string(),
+                RuntimeFunc {
+                    func: zipf as *const () as usize,
+                    param_count: 2,
+                    param_types: &[RuntimeType::Int, RuntimeType::Float],
                     return_type: RuntimeType::Pointer,
                 },
             ),
@@ -373,17 +480,22 @@ impl ScriptWorker {
                         *func,
                         args_ptr.as_mut_ptr(),
                         args.len().try_into().unwrap(),
-                        c"{name}".as_ptr() as *const _,
+                        c"const".as_ptr() as *const _,
                     )
                 }
             }
         }
     }
 
-    pub fn new(node: Node) -> Self {
+    pub fn new(node: Node, worker: usize) -> Self {
         let mut module_runtime: HashMap<String, (LLVMValueRef, LLVMTypeRef)> =
             HashMap::new();
         let mut module_state: HashMap<String, LLVMValueRef> = HashMap::new();
+
+        // FIXME: It's an ugly temporary hack to split port space with a
+        // hardcoded constant. Do this better via deriving in applu_rules how
+        // listen arguments look like and how the ranges should be.
+        Arc::clone(&MAX_PORTS).fetch_add(worker * 1000, Ordering::Relaxed);
 
         unsafe {
             // Set up a context, module and builder in that context.
@@ -549,6 +661,16 @@ impl ScriptWorker {
                     Instruction::Debug { text } => {
                         Self::jit_instruction(c"debug", vec![text], &ctx);
                         "debug"
+                    }
+
+                    Instruction::Listen { lower, n } => {
+                        Self::jit_instruction(c"listen", vec![lower, n], &ctx);
+                        "listen"
+                    }
+
+                    Instruction::Sleep { interval } => {
+                        Self::jit_instruction(c"sleep", vec![interval], &ctx);
+                        "sleep"
                     }
                 };
 

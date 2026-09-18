@@ -35,6 +35,12 @@ pub enum Instruction {
 
     /// Send a message to a server at specified address
     Ping { server: Arg },
+
+    /// Listen on a specified number of endpoints from the lower boundary
+    Listen { lower: Arg, n: Arg },
+
+    /// Sleep for specified amount of time
+    Sleep { interval: Arg },
 }
 
 #[derive(Debug, Clone, PartialEq)]

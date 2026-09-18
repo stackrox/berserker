@@ -16,6 +16,7 @@ randomString = { "random_string" }
 dynamicName = {
     randomPath
   | randomString
+  | zipf
 }
 
 dynamic = {dynamicName ~ args}
@@ -39,6 +40,8 @@ port = { "port" }
 open = { "open" }
 ping = { "ping" }
 debug = { "debug" }
+listen = { "listen" }
+sleep = { "sleep" }
 
 funcName = {
     task
@@ -47,6 +50,8 @@ funcName = {
   | open
   | ping
   | debug
+  | listen
+  | sleep
 }
 
 exp = { "exp" }
