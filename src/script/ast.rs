@@ -1,12 +1,19 @@
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum ConstType {
+    Text(String),
+    Int(u64),
+    Float(f64),
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Arg {
     /// Null constant
     Null,
 
     /// Simple constant
-    Const { text: String },
+    Const { value: ConstType },
 
     /// Variable available at runtime
     Var { name: String },

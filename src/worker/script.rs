@@ -29,12 +29,13 @@ use std::mem;
 
 use crate::{Worker, WorkerError};
 
-use crate::script::ast::{Arg, Dist, Instruction, Node};
+use crate::script::ast::{Arg, ConstType, Dist, Instruction, Node};
 
 #[derive(Debug, Clone)]
 enum RuntimeType {
     Int,
     Pointer,
+    Float,
 }
 
 #[derive(Debug, Clone)]
@@ -308,19 +309,32 @@ impl ScriptWorker {
                 let iptr = LLVMIntPtrTypeInContext(ctx.context, td);
                 LLVMConstNull(iptr)
             },
-            Arg::Const { text } => unsafe {
-                // The name of all constants created this way will be "const",
-                // which is ugly, but not a problem as LLVM modifies this to
-                // make sure uniqueness, i.e. they will be:
-                //
-                //      @const, @const.1, @const.2, ...
-                //
-                // in the jited code.
-                LLVMBuildGlobalString(
-                    ctx.builder,
-                    format!("{text}\0").as_ptr() as *const _,
-                    c"const".as_ptr() as *const _,
-                )
+            Arg::Const { value } => unsafe {
+                match value {
+                    ConstType::Text(text) => {
+                        // The name of all constants created this way will be
+                        // "const", which is ugly, but
+                        // not a problem as LLVM modifies this to
+                        // make sure uniqueness, i.e. they will be:
+                        //
+                        //      @const, @const.1, @const.2, ...
+                        //
+                        // in the jited code.
+                        LLVMBuildGlobalString(
+                            ctx.builder,
+                            format!("{text}\0").as_ptr() as *const _,
+                            c"const".as_ptr() as *const _,
+                        )
+                    }
+                    ConstType::Int(value) => {
+                        let i64t = LLVMInt64TypeInContext(ctx.context);
+                        LLVMConstInt(i64t, value, 0)
+                    }
+                    ConstType::Float(value) => {
+                        let double = LLVMDoubleTypeInContext(ctx.context);
+                        LLVMConstReal(double, value)
+                    }
+                }
             },
             Arg::Var { name } => {
                 *ctx.module_state.get(&name).expect("No variable")
@@ -414,6 +428,7 @@ impl ScriptWorker {
             // get a type for main function
             let i64t = LLVMInt64TypeInContext(context);
             let boolt = LLVMInt1TypeInContext(context);
+            let float = LLVMFloatTypeInContext(context);
             let iptr = LLVMIntPtrTypeInContext(context, td);
 
             // Insert runtime functions into the module
@@ -428,6 +443,7 @@ impl ScriptWorker {
                     .map(|t| match t {
                         RuntimeType::Pointer => iptr,
                         RuntimeType::Int => i64t,
+                        RuntimeType::Float => float,
                     })
                     .collect::<Vec<*mut LLVMType>>();
 
@@ -435,6 +451,7 @@ impl ScriptWorker {
                     match f.return_type {
                         RuntimeType::Int => i64t,
                         RuntimeType::Pointer => iptr,
+                        RuntimeType::Float => float,
                     },
                     function_args.as_mut_ptr(),
                     f.param_count,

@@ -2,7 +2,9 @@ use log::trace;
 use pest::{self, Parser, error::Error};
 use std::collections::HashMap;
 
-use crate::script::ast::{Arg, Dist, Instruction, MachineInstruction, Node};
+use crate::script::ast::{
+    Arg, ConstType, Dist, Instruction, MachineInstruction, Node,
+};
 
 #[derive(Debug)]
 pub enum ParseError {
@@ -152,9 +154,25 @@ fn build_ast_from_instr(
             .map(|arg| {
                 let a = first_nested_pair(arg);
                 match a.as_rule() {
-                    Rule::constant => Arg::Const {
-                        text: pair_to_string(first_nested_pair(a)),
-                    },
+                    Rule::constant => {
+                        let value = first_nested_pair(a);
+                        match value.as_rule() {
+                            Rule::text => Arg::Const {
+                                value: ConstType::Text(pair_to_string(
+                                    first_nested_pair(value),
+                                )),
+                            },
+                            Rule::int => Arg::Const {
+                                value: ConstType::Int(pair_to_int(value)),
+                            },
+                            Rule::float => Arg::Const {
+                                value: ConstType::Float(pair_to_float(value)),
+                            },
+                            unknown => {
+                                panic!("Unknown constant type {unknown:?}")
+                            }
+                        }
+                    }
                     Rule::ident => Arg::Var {
                         name: pair_to_string(a),
                     },
@@ -167,10 +185,27 @@ fn build_ast_from_instr(
                         let args: Vec<Arg> = args_pair
                             .into_inner()
                             .map(|arg| {
-                                let a =
+                                let value =
                                     first_nested_pair(first_nested_pair(arg));
-                                Arg::Const {
-                                    text: pair_to_string(a),
+                                match value.as_rule() {
+                                    Rule::text => Arg::Const {
+                                        value: ConstType::Text(pair_to_string(
+                                            first_nested_pair(value),
+                                        )),
+                                    },
+                                    Rule::int => Arg::Const {
+                                        value: ConstType::Int(pair_to_int(
+                                            value,
+                                        )),
+                                    },
+                                    Rule::float => Arg::Const {
+                                        value: ConstType::Float(pair_to_float(
+                                            value,
+                                        )),
+                                    },
+                                    unknown => panic!(
+                                        "Unknown constant type {unknown:?}"
+                                    ),
                                 }
                             })
                             .collect();
@@ -253,9 +288,9 @@ fn build_ast_from_dist(pair: pest::iterators::Pair<Rule>) -> Dist {
 fn string_from_pair(pair: pest::iterators::Pair<Rule>) -> String {
     assert!(matches!(pair.as_rule(), Rule::constant | Rule::ident));
 
-    // Extract "value" (Constants) or "name" (Identifier)
+    // Extract "value" (text Constants) or "name" (Identifier)
     // and convert it to String
-    pair_to_string(first_nested_pair(pair))
+    pair_to_string(first_nested_pair(first_nested_pair(pair)))
 }
 
 fn string_from_argument(
@@ -276,10 +311,23 @@ fn pair_to_string(pair: pest::iterators::Pair<Rule>) -> String {
     pair.as_span().as_str().to_string()
 }
 
+fn pair_to_int(pair: pest::iterators::Pair<Rule>) -> u64 {
+    pair.as_span().as_str().to_string().parse().unwrap()
+}
+
+fn pair_to_float(pair: pest::iterators::Pair<Rule>) -> f64 {
+    pair.as_span().as_str().to_string().parse().unwrap()
+}
+
 fn first_nested_pair(
     pair: pest::iterators::Pair<Rule>,
 ) -> pest::iterators::Pair<Rule> {
-    pair.into_inner().next().expect("Cannot get first pair")
+    let mut inner = pair.clone().into_inner();
+    if inner.is_empty() {
+        pair
+    } else {
+        inner.next().expect("Cannot get first pair")
+    }
 }
 
 #[cfg(test)]
@@ -310,7 +358,7 @@ mod tests {
             instructions[0],
             Instruction::Open {
                 path: Arg::Const {
-                    text: "/tmp/test".to_string()
+                    value: ConstType::Text("/tmp/test".to_string())
                 }
             }
         );
@@ -346,7 +394,7 @@ mod tests {
                 path: Arg::Dynamic {
                     name: "random_path".to_string(),
                     args: vec![Arg::Const {
-                        text: "/tmp".to_string()
+                        value: ConstType::Text("/tmp".to_string())
                     }],
                 }
             }
@@ -383,7 +431,7 @@ mod tests {
             instructions[0],
             Instruction::Debug {
                 text: Arg::Const {
-                    text: "run task stub".to_string(),
+                    value: ConstType::Text("run task stub".to_string()),
                 }
             }
         );
@@ -431,7 +479,7 @@ mod tests {
             instructions[0],
             Instruction::Debug {
                 text: Arg::Const {
-                    text: "ping server".to_string(),
+                    value: ConstType::Text("ping server".to_string()),
                 }
             }
         );
@@ -440,7 +488,7 @@ mod tests {
             instructions[1],
             Instruction::Ping {
                 server: Arg::Const {
-                    text: "127.0.0.1:8080".to_string(),
+                    value: ConstType::Text("127.0.0.1:8080".to_string()),
                 },
             }
         );
