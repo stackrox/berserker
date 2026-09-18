@@ -1,12 +1,19 @@
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum ConstType {
+    Text(String),
+    Int(u64),
+    Float(f64),
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Arg {
     /// Null constant
     Null,
 
     /// Simple constant
-    Const { text: String },
+    Const { value: ConstType },
 
     /// Variable available at runtime
     Var { name: String },
@@ -28,6 +35,12 @@ pub enum Instruction {
 
     /// Send a message to a server at specified address
     Ping { server: Arg },
+
+    /// Listen on a specified number of endpoints from the lower boundary
+    Listen { lower: Arg, n: Arg },
+
+    /// Sleep for specified amount of time
+    Sleep { interval: Arg },
 }
 
 #[derive(Debug, Clone, PartialEq)]
