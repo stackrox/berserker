@@ -85,15 +85,15 @@ fn run_script(script_path: String) -> Vec<(i32, u64)> {
                 unreachable!()
             };
 
-            let workers: u32 =
+            let workers: usize =
                 args.get("workers").cloned().unwrap().parse().unwrap();
 
             let duration: u64 =
                 args.get("duration").cloned().unwrap().parse().unwrap();
 
             (0..workers)
-                .filter_map(|_| {
-                    let worker = new_script_worker(node.clone());
+                .filter_map(|i| {
+                    let worker = new_script_worker(node.clone(), i);
 
                     match fork() {
                         Ok(Fork::Parent(child)) => {
@@ -290,7 +290,7 @@ mod tests {
         let ast: Vec<Node> = parse_instructions(input).unwrap();
         assert_eq!(ast.len(), 1);
 
-        new_script_worker(ast[0].clone()).run_payload().unwrap();
+        new_script_worker(ast[0].clone(), 0).run_payload().unwrap();
     }
 
     #[test]
@@ -305,7 +305,7 @@ mod tests {
         assert_eq!(nodes.len(), 1);
         let prepared_nodes = apply_rules(nodes);
 
-        new_script_worker(prepared_nodes[0].clone())
+        new_script_worker(prepared_nodes[0].clone(), 0)
             .run_payload()
             .unwrap();
     }
@@ -322,7 +322,7 @@ mod tests {
         assert_eq!(nodes.len(), 1);
         let prepared_nodes = apply_rules(nodes);
 
-        new_script_worker(prepared_nodes[0].clone())
+        new_script_worker(prepared_nodes[0].clone(), 0)
             .run_payload()
             .unwrap();
     }
@@ -339,7 +339,7 @@ mod tests {
         assert_eq!(nodes.len(), 1);
         let prepared_nodes = apply_rules(nodes);
 
-        new_script_worker(prepared_nodes[0].clone())
+        new_script_worker(prepared_nodes[0].clone(), 0)
             .run_payload()
             .unwrap();
     }
@@ -367,8 +367,8 @@ mod tests {
         let _ = apply(vec![&ast[0]]);
 
         // run workers
-        new_script_worker(ast[1].clone()).run_payload().unwrap();
-        new_script_worker(ast[2].clone()).run_payload().unwrap();
+        new_script_worker(ast[1].clone(), 0).run_payload().unwrap();
+        new_script_worker(ast[2].clone(), 0).run_payload().unwrap();
     }
 
     #[test]

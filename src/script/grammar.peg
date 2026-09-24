@@ -4,10 +4,11 @@ COMMENT = _{"//" ~ (!NEWLINE ~ ANY)*}
 ident_char = {ASCII_ALPHA | "_" | "$"}
 ident = @{ident_char ~ (ASCII_DIGIT | ident_char)*}
 
-constant = {
-    "\"" ~ value ~ "\""
-  | ASCII_DIGIT+
-}
+constant = { text | float | int }
+
+text = { "\"" ~ value ~ "\"" }
+int = { ASCII_DIGIT+ }
+float = { ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT+ }
 
 randomPath = { "random_path" }
 randomString = { "random_string" }
@@ -15,6 +16,7 @@ randomString = { "random_string" }
 dynamicName = {
     randomPath
   | randomString
+  | zipf
 }
 
 dynamic = {dynamicName ~ args}
@@ -38,6 +40,8 @@ port = { "port" }
 open = { "open" }
 ping = { "ping" }
 debug = { "debug" }
+listen = { "listen" }
+sleep = { "sleep" }
 
 funcName = {
     task
@@ -46,6 +50,8 @@ funcName = {
   | open
   | ping
   | debug
+  | listen
+  | sleep
 }
 
 exp = { "exp" }

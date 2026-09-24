@@ -1,4 +1,4 @@
-FROM registry.fedoraproject.org/fedora:43 AS builder
+FROM registry.fedoraproject.org/fedora:44 AS builder
 
 ARG RUST_VERSION=stable
 
