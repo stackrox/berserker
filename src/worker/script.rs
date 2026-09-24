@@ -150,28 +150,23 @@ pub unsafe extern "C" fn task(name: *const i8, args: *const i8) -> u64 {
 /// TODO: Decrement max_ports on batch exit.
 ///
 /// # Safety
-/// The caller must ensure the pointer is valid and points to a null
-/// terminated C-string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn listen_on_ports(lower: u64, n: u64) -> u64 {
     debug!("Listen {lower} {n}");
-    let max_ports =
-        Arc::clone(&MAX_PORTS).fetch_add(n as usize, Ordering::Relaxed);
+    let max_ports = MAX_PORTS.fetch_add(n as usize, Ordering::Relaxed);
 
     let start_port = lower + max_ports as u64;
-    let _listeners: Vec<_> = (start_port..start_port + n)
-        .map(|port| {
-            let addr = format!("0.0.0.0:{port}");
-            let listener = TcpListener::bind(&addr)
-                .expect("Couldn't listen on the specified address");
-            let fd = listener.as_raw_fd();
+    for port in start_port..start_port + n {
+        let addr = format!("0.0.0.0:{port}");
+        let listener = TcpListener::bind(&addr)
+            .expect("Couldn't listen on the specified address");
+        let fd = listener.as_raw_fd();
 
-            trace!("Listen {addr}, fd {fd}");
-            SOCKETS.with(|socks| socks.borrow_mut().push(fd));
+        trace!("Listen {addr}, fd {fd}");
+        SOCKETS.with(|socks| socks.borrow_mut().push(fd));
 
-            thread::spawn(move || for _stream in listener.incoming() {})
-        })
-        .collect();
+        thread::spawn(move || for _stream in listener.incoming() {});
+    }
 
     0
 }
@@ -181,15 +176,12 @@ thread_local! {
     static SOCKETS: RefCell<Vec<RawFd>> = const { RefCell::new(vec![]) };
 }
 
-pub static MAX_PORTS: LazyLock<Arc<AtomicUsize>> =
-    LazyLock::new(|| Arc::new(AtomicUsize::new(0)));
+static MAX_PORTS: AtomicUsize = AtomicUsize::new(0);
 
 /// Return a random integer from zipf distribution with specified
 /// size and exponent.
 ///
 /// # Safety
-/// The caller must ensure the pointer is valid and points to a null
-/// terminated C-string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn zipf(size: u64, exp: f64) -> u64 {
     debug!("zipf {size} {exp}");
@@ -199,8 +191,6 @@ pub unsafe extern "C" fn zipf(size: u64, exp: f64) -> u64 {
 /// Sleeps for specified amount of time.
 ///
 /// # Safety
-/// The caller must ensure the pointer is valid and points to a null
-/// terminated C-string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sleep(interval: f64) -> u64 {
     debug!("Sleep {interval}");
@@ -494,7 +484,7 @@ impl ScriptWorker {
         // FIXME: It's an ugly temporary hack to split port space with a
         // hardcoded constant. Do this better via deriving in applu_rules how
         // listen arguments look like and how the ranges should be.
-        Arc::clone(&MAX_PORTS).fetch_add(worker * 1000, Ordering::Relaxed);
+        MAX_PORTS.fetch_add(worker * 1000, Ordering::Relaxed);
 
         unsafe {
             // Set up a context, module and builder in that context.

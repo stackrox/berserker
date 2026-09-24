@@ -138,6 +138,52 @@ fn build_ast_from_function(
     }
 }
 
+fn pair_to_arg(pair: pest::iterators::Pair<Rule>) -> Arg {
+    match pair.as_rule() {
+        Rule::constant => {
+            let value = first_nested_pair(pair);
+            match value.as_rule() {
+                Rule::text => Arg::Const {
+                    value: ConstType::Text(pair_to_string(first_nested_pair(
+                        value,
+                    ))),
+                },
+                Rule::int => Arg::Const {
+                    value: ConstType::Int(pair_to_int(value)),
+                },
+                Rule::float => Arg::Const {
+                    value: ConstType::Float(pair_to_float(value)),
+                },
+                unknown => {
+                    panic!("Unknown constant type {unknown:?}")
+                }
+            }
+        }
+        Rule::ident => Arg::Var {
+            name: pair_to_string(pair),
+        },
+        Rule::dynamic => {
+            let mut inner = pair.into_inner();
+            let name = inner.next().expect("No argument name");
+            let args_pair = inner.next().expect("No argument value");
+
+            let args: Vec<Arg> = args_pair
+                .into_inner()
+                .map(|arg| {
+                    let value = first_nested_pair(arg);
+                    pair_to_arg(value)
+                })
+                .collect();
+
+            Arg::Dynamic {
+                name: pair_to_string(name),
+                args,
+            }
+        }
+        unknown => panic!("Unknown arg type {unknown:?}"),
+    }
+}
+
 fn build_ast_from_instr(
     pairs: pest::iterators::Pairs<Rule>,
 ) -> Vec<Instruction> {
@@ -151,73 +197,7 @@ fn build_ast_from_instr(
 
         let args: Vec<Arg> = args_pair
             .into_inner()
-            .map(|arg| {
-                let a = first_nested_pair(arg);
-                match a.as_rule() {
-                    Rule::constant => {
-                        let value = first_nested_pair(a);
-                        match value.as_rule() {
-                            Rule::text => Arg::Const {
-                                value: ConstType::Text(pair_to_string(
-                                    first_nested_pair(value),
-                                )),
-                            },
-                            Rule::int => Arg::Const {
-                                value: ConstType::Int(pair_to_int(value)),
-                            },
-                            Rule::float => Arg::Const {
-                                value: ConstType::Float(pair_to_float(value)),
-                            },
-                            unknown => {
-                                panic!("Unknown constant type {unknown:?}")
-                            }
-                        }
-                    }
-                    Rule::ident => Arg::Var {
-                        name: pair_to_string(a),
-                    },
-                    Rule::dynamic => {
-                        let mut inner = a.into_inner();
-                        let name = inner.next().expect("No argument name");
-                        let args_pair =
-                            inner.next().expect("No argument value");
-
-                        let args: Vec<Arg> = args_pair
-                            .into_inner()
-                            .map(|arg| {
-                                let value =
-                                    first_nested_pair(first_nested_pair(arg));
-                                match value.as_rule() {
-                                    Rule::text => Arg::Const {
-                                        value: ConstType::Text(pair_to_string(
-                                            first_nested_pair(value),
-                                        )),
-                                    },
-                                    Rule::int => Arg::Const {
-                                        value: ConstType::Int(pair_to_int(
-                                            value,
-                                        )),
-                                    },
-                                    Rule::float => Arg::Const {
-                                        value: ConstType::Float(pair_to_float(
-                                            value,
-                                        )),
-                                    },
-                                    unknown => panic!(
-                                        "Unknown constant type {unknown:?}"
-                                    ),
-                                }
-                            })
-                            .collect();
-
-                        Arg::Dynamic {
-                            name: pair_to_string(name),
-                            args,
-                        }
-                    }
-                    unknown => panic!("Unknown arg type {unknown:?}"),
-                }
-            })
+            .map(|arg| pair_to_arg(first_nested_pair(arg)))
             .collect();
 
         match first_nested_pair(name).as_rule() {
