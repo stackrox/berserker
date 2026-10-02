@@ -74,6 +74,6 @@ pub fn new_worker(
     }
 }
 
-pub fn new_script_worker(node: Node) -> Box<dyn Worker> {
-    Box::new(ScriptWorker::new(node))
+pub fn new_script_worker(node: Node, worker: usize) -> Box<dyn Worker> {
+    Box::new(ScriptWorker::new(node, worker))
 }
