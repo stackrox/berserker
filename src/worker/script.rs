@@ -39,7 +39,7 @@ use crate::script::ast::{Arg, ConstType, Dist, Instruction, Node};
 enum RuntimeType {
     Int,
     Pointer,
-    Float,
+    Double,
 }
 
 #[derive(Debug, Clone)]
@@ -329,8 +329,8 @@ pub static RUNTIME: LazyLock<HashMap<String, RuntimeFunc>> =
                 RuntimeFunc {
                     func: sleep as *const () as usize,
                     param_count: 1,
-                    param_types: &[RuntimeType::Float],
-                    return_type: RuntimeType::Pointer,
+                    param_types: &[RuntimeType::Double],
+                    return_type: RuntimeType::Int,
                 },
             ),
             // dynamic values
@@ -357,8 +357,8 @@ pub static RUNTIME: LazyLock<HashMap<String, RuntimeFunc>> =
                 RuntimeFunc {
                     func: zipf as *const () as usize,
                     param_count: 2,
-                    param_types: &[RuntimeType::Int, RuntimeType::Float],
-                    return_type: RuntimeType::Pointer,
+                    param_types: &[RuntimeType::Int, RuntimeType::Double],
+                    return_type: RuntimeType::Int,
                 },
             ),
             // utils
@@ -426,7 +426,7 @@ impl ScriptWorker {
                         let i64t = LLVMInt64TypeInContext(ctx.context);
                         LLVMConstInt(i64t, value, 0)
                     }
-                    ConstType::Float(value) => {
+                    ConstType::Double(value) => {
                         let double = LLVMDoubleTypeInContext(ctx.context);
                         LLVMConstReal(double, value)
                     }
@@ -529,7 +529,7 @@ impl ScriptWorker {
             // get a type for main function
             let i64t = LLVMInt64TypeInContext(context);
             let boolt = LLVMInt1TypeInContext(context);
-            let float = LLVMFloatTypeInContext(context);
+            let double = LLVMDoubleTypeInContext(context);
             let iptr = LLVMIntPtrTypeInContext(context, td);
 
             // Insert runtime functions into the module
@@ -544,7 +544,7 @@ impl ScriptWorker {
                     .map(|t| match t {
                         RuntimeType::Pointer => iptr,
                         RuntimeType::Int => i64t,
-                        RuntimeType::Float => float,
+                        RuntimeType::Double => double,
                     })
                     .collect::<Vec<*mut LLVMType>>();
 
@@ -552,7 +552,7 @@ impl ScriptWorker {
                     match f.return_type {
                         RuntimeType::Int => i64t,
                         RuntimeType::Pointer => iptr,
-                        RuntimeType::Float => float,
+                        RuntimeType::Double => double,
                     },
                     function_args.as_mut_ptr(),
                     f.param_count,

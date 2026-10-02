@@ -151,8 +151,8 @@ fn pair_to_arg(pair: pest::iterators::Pair<Rule>) -> Arg {
                 Rule::int => Arg::Const {
                     value: ConstType::Int(pair_to_int(value)),
                 },
-                Rule::float => Arg::Const {
-                    value: ConstType::Float(pair_to_float(value)),
+                Rule::double => Arg::Const {
+                    value: ConstType::Double(pair_to_double(value)),
                 },
                 unknown => {
                     panic!("Unknown constant type {unknown:?}")
@@ -306,7 +306,7 @@ fn pair_to_int(pair: pest::iterators::Pair<Rule>) -> u64 {
     pair.as_span().as_str().to_string().parse().unwrap()
 }
 
-fn pair_to_float(pair: pest::iterators::Pair<Rule>) -> f64 {
+fn pair_to_double(pair: pest::iterators::Pair<Rule>) -> f64 {
     pair.as_span().as_str().to_string().parse().unwrap()
 }
 

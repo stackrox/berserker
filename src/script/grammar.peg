@@ -4,11 +4,11 @@ COMMENT = _{"//" ~ (!NEWLINE ~ ANY)*}
 ident_char = {ASCII_ALPHA | "_" | "$"}
 ident = @{ident_char ~ (ASCII_DIGIT | ident_char)*}
 
-constant = { text | float | int }
+constant = { text | double | int }
 
 text = { "\"" ~ value ~ "\"" }
 int = { ASCII_DIGIT+ }
-float = { ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT+ }
+double = { ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT+ }
 
 randomPath = { "random_path" }
 randomString = { "random_string" }

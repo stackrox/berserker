@@ -4,7 +4,7 @@ use std::collections::HashMap;
 pub enum ConstType {
     Text(String),
     Int(u64),
-    Float(f64),
+    Double(f64),
 }
 
 #[derive(Debug, Clone, PartialEq)]

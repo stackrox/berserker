@@ -412,4 +412,40 @@ mod tests {
         assert_eq!(args.get("workers").cloned().unwrap(), "2".to_string());
         assert_eq!(args.get("duration").cloned().unwrap(), "10".to_string());
     }
+
+    #[test]
+    fn test_listen_with_zipf() {
+        let input = r#"
+            main (workers = 2, duration = 10) {
+              listen(8081, zipf(10, 1.4));
+            }
+        "#;
+
+        let nodes: Vec<Node> = parse_instructions(input).unwrap();
+        assert_eq!(nodes.len(), 1);
+
+        let prepared_nodes = apply_rules(nodes);
+
+        new_script_worker(prepared_nodes[0].clone(), 0)
+            .run_payload()
+            .unwrap();
+    }
+
+    #[test]
+    fn test_sleep() {
+        let input = r#"
+            main (workers = 2, duration = 10) {
+              sleep(0.01);
+            }
+        "#;
+
+        let nodes: Vec<Node> = parse_instructions(input).unwrap();
+        assert_eq!(nodes.len(), 1);
+
+        let prepared_nodes = apply_rules(nodes);
+
+        new_script_worker(prepared_nodes[0].clone(), 0)
+            .run_payload()
+            .unwrap();
+    }
 }
